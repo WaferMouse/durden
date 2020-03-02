@@ -420,7 +420,7 @@ class VerticalScrolledFrame(tk.Frame):
         # create a canvas object and a vertical scrollbar for scrolling it
         vscrollbar = tk.Scrollbar(self, orient=tk.VERTICAL)
         vscrollbar.pack(fill=tk.Y, side=tk.RIGHT, expand=tk.FALSE)
-        canvas = tk.Canvas(self, bd=0, highlightthickness=0,
+        canvas = tk.Canvas(self, bd=0, background = '#FFFFFF', highlightthickness=0,
                         yscrollcommand=vscrollbar.set)
         canvas.pack(side=tk.LEFT, fill=tk.BOTH, expand=tk.TRUE)
         vscrollbar.config(command=canvas.yview)
@@ -449,7 +449,7 @@ class VerticalScrolledFrame(tk.Frame):
             if interior.winfo_reqwidth() != canvas.winfo_width():
                 # update the inner frame's width to fill the canvas
                 canvas.itemconfigure(interior_id, width=canvas.winfo_width())
-        canvas.bind('<Configure>', _configure_canvas)
+        #canvas.bind('<Configure>', _configure_canvas)
             
 class TileBrowser(VerticalScrolledFrame):
     def __init__(self, parent, tilelist, var_tile, var_paletteline, *args, **options):
