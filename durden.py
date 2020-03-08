@@ -63,11 +63,11 @@ caret_mask = [
 
 class VDPFields( ctypes.LittleEndianStructure ): #PCCY XAAA AAAA AAAA
     _fields_ = [
-        ("address",     c_uint16, 11 ),  # asWord & 1
-        ("xflip",       c_uint16, 1 ),  # asWord & 2
-        ("yflip",       c_uint16, 1 ),  # asWord & 4
-        ("palette",     c_uint16, 2 ),  # asWord & 4
-        ("priority",    c_uint16, 1 ),  # asWord & 8
+        ("address",     c_uint16, 11 ),
+        ("xflip",       c_uint16, 1 ),
+        ("yflip",       c_uint16, 1 ),
+        ("palette",     c_uint16, 2 ),
+        ("priority",    c_uint16, 1 ),
         ]
 
 class VDPIndex( ctypes.Union ):
@@ -541,7 +541,8 @@ class PlaneMapEditor(Editor):
                     char = char.upper()
                 chari = ord(char)
                 sel = self.selection.get() % 2
-                thistile = self.planes[sel][self.caret_pos[0]][self.caret_pos[1]]
+                offset = (self.caret_pos[0] * 40) + self.caret_pos[1]
+                thistile = self.planes[sel][offset]
                 if char == ' ':
                     thistile.address = app.font_tool.space_offset
                 elif chari < 58:
@@ -569,7 +570,8 @@ class PlaneMapEditor(Editor):
                 sel = self.selection.get()
                 sel = sel % 2
             #PCCY XAAA AAAA AAAA
-                thistile = self.planes[sel][cy][cx]
+                offset = (cy * 40) + cx
+                thistile = self.planes[sel][offset]
                 thistile.address = self.tile.get()
                 thistile.priority = self.priority.get()
                 thistile.xflip = self.xflip.get()
@@ -594,7 +596,8 @@ class PlaneMapEditor(Editor):
         if 0 <= cx < 40 and 0 <= cy < 28:
             sel = self.selection.get()
             sel = sel % 2
-            thistile = self.planes[sel][cy][cx]
+            offset = (cy * 40) + cx
+            thistile = self.planes[sel][offset]
             if thistile.xflip:
                 self.chk_xflip.select()
             else:
@@ -615,15 +618,17 @@ class PlaneMapEditor(Editor):
             self.viewer.refresh(self.planes[self.selection.get()], x, y)
         else:
             self.deeptiles = {}
-            for y in range(len(self.planes[0])):
-                for x in range(len(self.planes[0][0])):
-                    key = (self.planes[0][y][x].asWord, self.planes[1][y][x].asWord)
+            for y in range(28):
+                offset_y = y * 40
+                for x in range(40):
+                    offset = offset_y + x
+                    key = (self.planes[0][offset].asWord, self.planes[1][offset].asWord)
                     if key not in self.deeptiles:
                         tiles = []
                         palettelines = []
                         priority = 0
                         for i in range(2):
-                            tile = self.planes[i][y][x]
+                            tile = self.planes[i][offset]
                             palettelines.append(tile.palette)
                             tiles.append(self.tilelist[tile.address].transform(tile.xflip, tile.yflip))
                             priority = tile.priority
@@ -639,7 +644,8 @@ class PlaneMapEditor(Editor):
         if self.tool and self.caret_pos:
             y = self.caret_pos[0]
             x = self.caret_pos[1]
-            tile = self.planes[1][y][x]
+            offset = (y * 40) + x
+            tile = self.planes[1][offset]
             ppm = caret_on_ppm(tile_to_ppm(self.tilelist[tile.address].transform(tile.xflip, tile.yflip), tile.palette, self.palette))
             img = tkinter.PhotoImage(data=ppm, format='PPM')
             self.caret_tile = img.zoom(2,2)
@@ -665,8 +671,11 @@ class MapViewer(tk.Canvas):
     def refresh(self, hex_split, x, y): #PCCY XAAA AAAA AAAA
         if not x:
             for y in range(self.height_t):
+                offset_y = y * self.width_t
                 for x in range(self.width_t):
-                    thistile = hex_split[y][x]
+                    offset = x + offset_y
+                    #thistile = hex_split[y][x]
+                    thistile = hex_split[offset]
                     #tileflags = thistile.priority << 4
                     #tileflags = tileflags + (thistile.palette << 2)
                     #tileflags = tileflags + (thistile.yflip << 1)
@@ -674,7 +683,8 @@ class MapViewer(tk.Canvas):
                     tileflags = (thistile.asWord >> 11) & 0b11111
                     self.itemconfigure(self.tiles[y][x], image = self.tilelist[thistile.address].variant(tileflags, 2))
         else:
-            thistile = hex_split[y][x]
+            offset = x + (y * self.width_t)
+            thistile = hex_split[offset]
             tileflags = thistile.priority << 4
             tileflags = tileflags + (thistile.palette << 2)
             tileflags = tileflags + (thistile.yflip << 1)
@@ -810,12 +820,12 @@ class App:
         self.map = []
 
         for y in range(28):
-            row = []
+            #row = []
             for x in range(40):
-                row.append(VDPIndex())
-                row[-1].yflip = y & 1
-                row[-1].address = x & 1
-            self.map.append(row)
+                self.map.append(VDPIndex())
+                self.map[-1].yflip = y & 1
+                self.map[-1].address = x & 1
+            #self.map.append(row)
 
         self.map2 = copy.deepcopy(self.map)
 
@@ -936,11 +946,11 @@ class App:
             with open(filename, 'rb') as binary_file:
                 data = binary_file.read()
             for y in range(28):
-                row = []
+                #row = []
                 for x in range(0, 80, 2):
-                    row.append(VDPIndex())
-                    row[-1].asWord = (data[(y*40) + x] << 8) + data[(y*40) + x + 1]
-                map.append(row)
+                    map.append(VDPIndex())
+                    map[-1].asWord = (data[(y*80) + x] << 8) + data[(y*80) + x + 1]
+                #map.append(row)
             self.planes[0] = map
             self.map_editor.refresh()
             
@@ -951,11 +961,11 @@ class App:
             with open(filename, 'rb') as binary_file:
                 data = binary_file.read()
             for y in range(28):
-                row = []
+                #row = []
                 for x in range(0, 80, 2):
-                    row.append(VDPIndex())
-                    row[-1].asWord = (data[(y*40) + x] << 8) + data[(y*40) + x + 1]
-                map.append(row)
+                    map.append(VDPIndex())
+                    map[-1].asWord = (data[(y*80) + x] << 8) + data[(y*80) + x + 1]
+                #map.append(row)
             self.planes[1] = map
             self.map_editor.refresh()
         
@@ -976,9 +986,9 @@ class App:
         if filename !='':
             out = array.array('B')
             for y in self.planes[0]:
-                for x in y:
-                    out.append(x.asWord>>8)
-                    out.append(x.asWord&0xFF)
+                #for x in y:
+                out.append(y.asWord>>8)
+                out.append(y.asWord&0xFF)
         
         with open(filename, "wb") as binary_file:
             binary_file.write(out)
@@ -988,9 +998,9 @@ class App:
         if filename !='':
             out = array.array('B')
             for y in self.planes[1]:
-                for x in y:
-                    out.append(x.asWord>>8)
-                    out.append(x.asWord&0xFF)
+                #for x in y:
+                out.append(y.asWord>>8)
+                out.append(y.asWord&0xFF)
         
         with open(filename, "wb") as binary_file:
             binary_file.write(out)
