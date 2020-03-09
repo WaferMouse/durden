@@ -4,8 +4,8 @@ import tkinter.filedialog
 import array
 import copy
 
-# width = 40 tiles (10 * 4)
-# height = 28 tiles (7 * 4)
+# width = self.plane_map_width.get() tiles (10 * 4)
+# height = self.plane_map_height.get() tiles (7 * 4)
 
 # paletteline colour tile 
 
@@ -479,8 +479,8 @@ class TileBrowser(VerticalScrolledFrame):
                 self.tiles[i].config(image = self.images[i])
                 
     def select_tile(self, event = ''):
-        x = self.winfo_pointerx() - self.winfo_rootx()
-        y = self.winfo_pointery() - self.winfo_rooty()
+        x = self.interior.winfo_pointerx() - self.interior.winfo_rootx()
+        y = self.interior.winfo_pointery() - self.interior.winfo_rooty()
         x = x >> 4
         y = (y >> 4) << 3
         i = y + x
@@ -490,8 +490,10 @@ class TileBrowser(VerticalScrolledFrame):
         
 class PlaneMapEditor(Editor):
 
-    def __init__(self, parent, var_selector, palette, tilelist, var_tile, var_paletteline, planes, *args, **options):
+    def __init__(self, parent, var_selector, palette, tilelist, var_tile, var_paletteline, planes, var_plane_map_width, var_plane_map_height, *args, **options):
         Editor.__init__(self, parent, var_selector, *args, **options)
+        self.plane_map_width = var_plane_map_width
+        self.plane_map_height = var_plane_map_height
         self.paletteline = var_paletteline
         self.planes = planes
         self.tilelist = tilelist
@@ -500,7 +502,7 @@ class PlaneMapEditor(Editor):
         self.tile = var_tile
         self.selector.config(values = ['Plane A', 'Plane B', 'Both'], width = 7)
         self.selector.current(0)
-        self.viewer = MapViewer(self, 40, 28, self.tilelist, height = 28*16, width = 40*16, bd=0, highlightthickness = 0)
+        self.viewer = MapViewer(self, self.plane_map_width.get(), self.plane_map_height.get(), self.tilelist, height = self.plane_map_height.get()*16, width = self.plane_map_width.get()*16, bd=0, highlightthickness = 0)
         self.viewer.grid(column = 1, row = 0, rowspan = 2)
         for bind in ["<ButtonPress-1>", "<B1-Motion>"]:
             self.viewer.bind(bind, lambda event: self.clicked(event))
@@ -515,16 +517,46 @@ class PlaneMapEditor(Editor):
         control_frame = tk.Frame(self)
         control_frame.grid(column = 0, row = 1)
         
+        vcmd = (root.register(self.validate),
+            '%d', '%i', '%P', '%s', '%S', '%v', '%V', '%W')
+        
+        tk.Label(control_frame, text = "Width").grid()
+        self.ent_width = tk.Entry(control_frame, width = 3, validate = 'key', validatecommand = vcmd)
+        self.ent_width.grid(column = 1, row = 0)
+        
+        tk.Label(control_frame, text = "Height").grid()
+        self.ent_height = tk.Entry(control_frame, width = 3, validate = 'key', validatecommand = vcmd)
+        self.ent_height.grid(column = 1, row = 1)
+        
         self.chk_priority = tk.Checkbutton(control_frame, text = "Priority", variable = self.priority)#, onvalue = 1 << 15)
-        self.chk_priority.grid()
+        self.chk_priority.grid(columnspan = 2)
         
         self.chk_xflip = tk.Checkbutton(control_frame, text = "X flip", variable = self.xflip)#, onvalue = 1 << 11)
-        self.chk_xflip.grid()
+        self.chk_xflip.grid(columnspan = 2)
         self.chk_yflip = tk.Checkbutton(control_frame, text = "Y flip", variable = self.yflip)#, onvalue = 1 << 12)
-        self.chk_yflip.grid()
+        self.chk_yflip.grid(columnspan = 2)
         self.deeptiles = {}
         self.caret_tile = None
         self.caret_pos = None
+        
+    def validate(self, action, index, value_if_allowed,
+                       prior_value, text, validation_type, trigger_type, widget_name):
+        try:
+            int_value_if_allowed = int(value_if_allowed)
+        except:
+            int_value_if_allowed = 1
+        if int_value_if_allowed == 0:
+            return False
+        elif value_if_allowed == '':
+            return True
+        elif value_if_allowed:
+            try:
+                int(value_if_allowed)
+                return True
+            except ValueError:
+                return False
+        else:
+            return False
         
     def keyboard(self, event):
         if self.tool and self.caret_pos:
@@ -541,7 +573,7 @@ class PlaneMapEditor(Editor):
                     char = char.upper()
                 chari = ord(char)
                 sel = self.selection.get() % 2
-                offset = (self.caret_pos[0] * 40) + self.caret_pos[1]
+                offset = (self.caret_pos[0] * self.plane_map_width.get()) + self.caret_pos[1]
                 thistile = self.planes[sel][offset]
                 if char == ' ':
                     thistile.address = app.font_tool.space_offset
@@ -558,19 +590,19 @@ class PlaneMapEditor(Editor):
                 self.caret_pos[1] = self.caret_pos[1] + 1
                 if self.caret_pos[1] > 39:
                     self.caret_pos[1] = 0
-                    self.caret_pos[0] = (self.caret_pos[0] + 1) % 28
+                    self.caret_pos[0] = (self.caret_pos[0] + 1) % self.plane_map_height.get()
                 self.refresh()
         
     def clicked(self, event):
         cx, cy = event2canvas(event, self.viewer)
         cx = int(cx) >> 4
         cy = int(cy) >> 4
-        if 0 <= cx < 40 and 0 <= cy < 28:
+        if 0 <= cx < self.plane_map_width.get() and 0 <= cy < self.plane_map_height.get():
             if self.tool == 0:
                 sel = self.selection.get()
                 sel = sel % 2
             #PCCY XAAA AAAA AAAA
-                offset = (cy * 40) + cx
+                offset = (cy * self.plane_map_width.get()) + cx
                 thistile = self.planes[sel][offset]
                 thistile.address = self.tile.get()
                 thistile.priority = self.priority.get()
@@ -593,10 +625,10 @@ class PlaneMapEditor(Editor):
         cx, cy = event2canvas(event, self.viewer)
         cx = int(cx) >> 4
         cy = int(cy) >> 4
-        if 0 <= cx < 40 and 0 <= cy < 28:
+        if 0 <= cx < self.plane_map_width.get() and 0 <= cy < self.plane_map_height.get():
             sel = self.selection.get()
             sel = sel % 2
-            offset = (cy * 40) + cx
+            offset = (cy * self.plane_map_width.get()) + cx
             thistile = self.planes[sel][offset]
             if thistile.xflip:
                 self.chk_xflip.select()
@@ -618,9 +650,9 @@ class PlaneMapEditor(Editor):
             self.viewer.refresh(self.planes[self.selection.get()], x, y)
         else:
             self.deeptiles = {}
-            for y in range(28):
-                offset_y = y * 40
-                for x in range(40):
+            for y in range(self.plane_map_height.get()):
+                offset_y = y * self.plane_map_width.get()
+                for x in range(self.plane_map_width.get()):
                     offset = offset_y + x
                     key = (self.planes[0][offset].asWord, self.planes[1][offset].asWord)
                     if key not in self.deeptiles:
@@ -644,7 +676,7 @@ class PlaneMapEditor(Editor):
         if self.tool and self.caret_pos:
             y = self.caret_pos[0]
             x = self.caret_pos[1]
-            offset = (y * 40) + x
+            offset = (y * self.plane_map_width.get()) + x
             tile = self.planes[1][offset]
             ppm = caret_on_ppm(tile_to_ppm(self.tilelist[tile.address].transform(tile.xflip, tile.yflip), tile.palette, self.palette))
             img = tkinter.PhotoImage(data=ppm, format='PPM')
@@ -786,6 +818,12 @@ class App:
         self.tile = tk.IntVar()
         self.tile.set(0)
         
+        self.plane_map_width = tk.IntVar()
+        self.plane_map_width.set(40)
+        
+        self.plane_map_height = tk.IntVar()
+        self.plane_map_height.set(28)
+        
         self.menubar = tk.Menu(self.frame)
 
         self.filemenu = tk.Menu(self.menubar, tearoff=0)
@@ -819,9 +857,9 @@ class App:
 
         self.map = []
 
-        for y in range(28):
+        for y in range(self.plane_map_height.get()):
             #row = []
-            for x in range(40):
+            for x in range(self.plane_map_width.get()):
                 self.map.append(VDPIndex())
                 self.map[-1].yflip = y & 1
                 self.map[-1].address = x & 1
@@ -860,7 +898,7 @@ class App:
         
         self.font_tool = FontTool(self.tile_editor_frm, self.tilelist, self.paletteline, self.tile)
         
-        self.map_editor = PlaneMapEditor(self.frame, self.selected_map, self.palette, self.tilelist, self.tile, self.paletteline, self.planes)
+        self.map_editor = PlaneMapEditor(self.frame, self.selected_map, self.palette, self.tilelist, self.tile, self.paletteline, self.planes, self.plane_map_width, self.plane_map_height)
         self.map_editor.pack(side=tk.LEFT, fill = tk.BOTH)
         self.tile_editor_frm.pack(side=tk.LEFT, fill = tk.Y)
         self.tool_selector = ttk.Combobox(self.tile_editor_frm, state = ['readonly'])
@@ -945,11 +983,11 @@ class App:
             map = []
             with open(filename, 'rb') as binary_file:
                 data = binary_file.read()
-            for y in range(28):
+            for y in range(self.plane_map_height.get()):
                 #row = []
-                for x in range(0, 80, 2):
+                for x in range(0, self.plane_map_width.get()*2, 2):
                     map.append(VDPIndex())
-                    map[-1].asWord = (data[(y*80) + x] << 8) + data[(y*80) + x + 1]
+                    map[-1].asWord = (data[(y*self.plane_map_width.get()*2) + x] << 8) + data[(y*self.plane_map_width.get()*2) + x + 1]
                 #map.append(row)
             self.planes[0] = map
             self.map_editor.refresh()
@@ -960,11 +998,11 @@ class App:
             map = []
             with open(filename, 'rb') as binary_file:
                 data = binary_file.read()
-            for y in range(28):
+            for y in range(self.plane_map_height.get()):
                 #row = []
-                for x in range(0, 80, 2):
+                for x in range(0, self.plane_map_width.get()*2, 2):
                     map.append(VDPIndex())
-                    map[-1].asWord = (data[(y*80) + x] << 8) + data[(y*80) + x + 1]
+                    map[-1].asWord = (data[(y*self.plane_map_width.get()*2) + x] << 8) + data[(y*self.plane_map_width.get()*2) + x + 1]
                 #map.append(row)
             self.planes[1] = map
             self.map_editor.refresh()
