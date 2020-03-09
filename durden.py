@@ -983,12 +983,12 @@ class App:
             map = []
             with open(filename, 'rb') as binary_file:
                 data = binary_file.read()
-            for y in range(self.plane_map_height.get()):
-                #row = []
-                for x in range(0, self.plane_map_width.get()*2, 2):
-                    map.append(VDPIndex())
-                    map[-1].asWord = (data[(y*self.plane_map_width.get()*2) + x] << 8) + data[(y*self.plane_map_width.get()*2) + x + 1]
-                #map.append(row)
+            for y in range(0, len(data), 2):
+                map.append(VDPIndex())
+                map[-1].asWord = (data[y] << 8) + data[y + 1]
+            diff = (self.plane_map_height.get() * self.plane_map_width.get()) - len(map)
+            for i in range(diff > 0 and diff):
+                map.append(VDPIndex())
             self.planes[0] = map
             self.map_editor.refresh()
             
@@ -998,12 +998,12 @@ class App:
             map = []
             with open(filename, 'rb') as binary_file:
                 data = binary_file.read()
-            for y in range(self.plane_map_height.get()):
-                #row = []
-                for x in range(0, self.plane_map_width.get()*2, 2):
-                    map.append(VDPIndex())
-                    map[-1].asWord = (data[(y*self.plane_map_width.get()*2) + x] << 8) + data[(y*self.plane_map_width.get()*2) + x + 1]
-                #map.append(row)
+            for y in range(0, len(data), 2):
+                map.append(VDPIndex())
+                map[-1].asWord = (data[y] << 8) + data[y + 1]
+            diff = (self.plane_map_height.get() * self.plane_map_width.get()) - len(map)
+            for i in range(diff > 0 and diff):
+                map.append(VDPIndex())
             self.planes[1] = map
             self.map_editor.refresh()
         
@@ -1023,7 +1023,8 @@ class App:
         filename = tk.filedialog.asksaveasfilename(title = "Save plane A", initialfile = "plane_a.bin", filetypes = (("BIN files","*.bin"),("all files","*.*")))
         if filename !='':
             out = array.array('B')
-            for y in self.planes[0]:
+            for i in range(self.plane_map_height.get() * self.plane_map_width.get()):
+                y = self.planes[0][i]
                 #for x in y:
                 out.append(y.asWord>>8)
                 out.append(y.asWord&0xFF)
@@ -1035,7 +1036,8 @@ class App:
         filename = tk.filedialog.asksaveasfilename(title = "Save plane B", initialfile = "plane_b.bin", filetypes = (("BIN files","*.bin"),("all files","*.*")))
         if filename !='':
             out = array.array('B')
-            for y in self.planes[1]:
+            for i in range(self.plane_map_height.get() * self.plane_map_width.get()):
+                y = self.planes[1][i]
                 #for x in y:
                 out.append(y.asWord>>8)
                 out.append(y.asWord&0xFF)
