@@ -60,6 +60,25 @@ caret_mask = [
     1,2,1,2,1,0,0,0,
     1,1,1,1,1,0,0,0,
     ]
+    
+error_tile = [
+    1,1,1,1,1,1,1,1,
+    1,1,0,0,0,0,1,1,
+    1,0,1,0,0,1,0,1,
+    1,0,0,1,1,0,0,1,
+    1,0,0,1,1,0,0,1,
+    1,0,1,0,0,1,0,1,
+    1,1,0,0,0,0,1,1,
+    1,1,1,1,1,1,1,1,
+    ]
+    
+    
+error_ppm = array.array('B')
+for i in range(len(error_tile)):
+    error_ppm.append([0,255][error_tile[i]])
+    error_ppm.append(0)
+    error_ppm.append(0)
+error_ppm = PPM_HEADER + error_ppm
 
 class VDPFields( ctypes.LittleEndianStructure ): #PCCY XAAA AAAA AAAA
     _fields_ = [
@@ -289,11 +308,7 @@ def tile_to_ppm(tile, paletteline, palette, *args):
     
 def caret_on_ppm(ppm):
     d = 11
-    header = b'P6 '
-    header = header + str(8).encode('ascii')
-    header = header + b' '
-    header = header + str(tile_height).encode('ascii')
-    header = header +  b' 255 '
+    header = PPM_HEADER
     new_ppm = array.array('B')
     for i in range(len(caret_mask)):
         for n in range(3):
@@ -700,28 +715,29 @@ class MapViewer(tk.Canvas):
                 flarp.append(tile)
             self.tiles.append(flarp.copy())
             
+        self.error_image = tkinter.PhotoImage(width=8, height=8, data=error_ppm, format='PPM')
+        self.error_image = self.error_image.zoom(2,2)
+            
     def refresh(self, hex_split, x, y): #PCCY XAAA AAAA AAAA
         if not x:
             for y in range(self.height_t):
                 offset_y = y * self.width_t
                 for x in range(self.width_t):
                     offset = x + offset_y
-                    #thistile = hex_split[y][x]
                     thistile = hex_split[offset]
-                    #tileflags = thistile.priority << 4
-                    #tileflags = tileflags + (thistile.palette << 2)
-                    #tileflags = tileflags + (thistile.yflip << 1)
-                    #tileflags = tileflags + (thistile.xflip)
                     tileflags = (thistile.asWord >> 11) & 0b11111
-                    self.itemconfigure(self.tiles[y][x], image = self.tilelist[thistile.address].variant(tileflags, 2))
+                    try:
+                        self.itemconfigure(self.tiles[y][x], image = self.tilelist[thistile.address].variant(tileflags, 2))
+                    except IndexError:
+                        self.itemconfigure(self.tiles[y][x], image = self.error_image)
         else:
             offset = x + (y * self.width_t)
             thistile = hex_split[offset]
-            tileflags = thistile.priority << 4
-            tileflags = tileflags + (thistile.palette << 2)
-            tileflags = tileflags + (thistile.yflip << 1)
-            tileflags = tileflags + (thistile.xflip)
-            self.itemconfigure(self.tiles[y][x], image = self.tilelist[thistile.address].variant(tileflags, 2))
+            tileflags = (thistile.asWord >> 11) & 0b11111
+            try:
+                self.itemconfigure(self.tiles[y][x], image = self.tilelist[thistile.address].variant(tileflags, 2))
+            except IndexError:
+                self.itemconfigure(self.tiles[y][x], image = self.error_image)
                 
     def refresh_2(self, hex_split, hex_split_2):
         pass
@@ -944,6 +960,7 @@ class App:
         
     def tiles_changed(self):
         self.tile_browser.refresh()
+        self.map_editor.refresh()
         
     def open_tiles(self):
         filename = tk.filedialog.askopenfilename(title = "Open tiles",filetypes = (("BIN files","*.bin"),("all files","*.*")))
