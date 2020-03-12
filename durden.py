@@ -964,6 +964,7 @@ class App:
         if tool == 0:
             self.font_tool.forget()
             self.tile_editor.pack(fill = tk.Y, expand = 1)
+            self.font_tool.tile_changed()
         elif tool == 1:
             self.tile_editor.forget()
             self.font_tool.pack(fill = tk.Y, expand = 1)
