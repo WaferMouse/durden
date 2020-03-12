@@ -381,22 +381,33 @@ class FontTool(tk.Frame):
         self.zero_btn = tk.Checkbutton(self, indicatoron = False, variable = self.zero_toggle)
         self.zero_btn.grid(column = 2, row = 3)
         
-        self.lower_a_cmb.bind('<<ComboboxSelected>>', self.refresh)
-        self.upper_a_cmb.bind('<<ComboboxSelected>>', self.refresh)
-        self.space_cmb.bind('<<ComboboxSelected>>', self.refresh)
-        self.zero_cmb.bind('<<ComboboxSelected>>', self.refresh)
+        self.lower_a_cmb.bind('<<ComboboxSelected>>', self.combo_changed)
+        self.upper_a_cmb.bind('<<ComboboxSelected>>', self.combo_changed)
+        self.space_cmb.bind('<<ComboboxSelected>>', self.combo_changed)
+        self.zero_cmb.bind('<<ComboboxSelected>>', self.combo_changed)
+        
+        self.tile_changed()
+        
+    def combo_to_offset(self):
+        self.lower_a_offset = self.lower_a_cmb.current()
+        self.upper_a_offset = self.upper_a_cmb.current()
+        self.space_offset = self.space_cmb.current()
+        self.zero_offset = self.zero_cmb.current()
+        
+    def combo_changed(self, *args):
+        self.combo_to_offset()
+        self.refresh()
         
     def refresh(self, *args):
         tile_choices = []
         for i in range(len(self.tilelist)):
             tile_choices.append(format(i*(tile_height >> 3),'x'))
-        ting = [
+        for x, y, z in [
             [self.lower_a_cmb,self.lower_a_offset, self.lower_a_btn],
             [self.upper_a_cmb,self.upper_a_offset, self.upper_a_btn],
             [self.space_cmb,self.space_offset, self.space_btn],
             [self.zero_cmb,self.zero_offset, self.zero_btn],
-            ]
-        for x, y, z in ting:
+            ]:
             x.config(values = tile_choices)
             if y < len(tile_choices):
                 x.current(y)
@@ -404,10 +415,6 @@ class FontTool(tk.Frame):
                 x.current(0)
             z.config(image = self.tilelist[x.current()].variant(self.paletteline.get() << 2,4))
             
-        self.lower_a_offset = self.lower_a_cmb.current()
-        self.upper_a_offset = self.upper_a_cmb.current()
-        self.space_offset = self.space_cmb.current()
-        self.zero_offset = self.zero_cmb.current()
         
     def tile_changed(self, *args):
         if self.lower_a_toggle.get():
@@ -423,6 +430,7 @@ class FontTool(tk.Frame):
             i.set(0)
             
         self.refresh()
+        self.combo_to_offset()
             
 class VerticalScrolledFrame(tk.Frame):
     """A pure Tkinter scrollable frame that actually works!
@@ -660,7 +668,8 @@ class PlaneMapEditor(Editor):
             else:
                 self.chk_priority.deselect()
             self.paletteline.set(thistile.palette)
-            self.tile.set(thistile.address)
+            if thistile.address < len(self.tilelist):
+                self.tile.set(thistile.address)
             
     def refresh(self, x=None, y=None):
         if self.selection.get() < 2:
@@ -966,6 +975,7 @@ class App:
     def tiles_changed(self):
         self.tile_browser.refresh()
         self.map_editor.refresh()
+        self.font_tool.refresh()
         
     def open_tiles(self):
         filename = tk.filedialog.askopenfilename(title = "Open tiles",filetypes = (("BIN files","*.bin"),("all files","*.*")))
