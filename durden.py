@@ -289,21 +289,24 @@ class Tile:
 def tile_to_ppm(tile, paletteline, palette, *args):
     ppm = bytearray()
     palettelineoffset = paletteline << 6 #16 * 4
-    for y in range(tile_height):
-        for x in range(8):
-            i = (y << 3) + x
-            pixel_value = tile[i]
-            if args and pixel_value == 0:
-                r, g, b = palette.get_true_rgb_colour(args[1], args[0][i])
-            else:
-                try:
-                    r, g, b = palette.get_true_rgb_colour(paletteline, pixel_value)
-                except:
-                    r, g, b = palette.get_true_rgb_colour(paletteline.get(), pixel_value)
-            ppm.append(r)
-            ppm.append(g)
-            ppm.append(b)
-    ppm = PPM_HEADER + ppm
+    if tile == None or (None in args):
+        ppm = error_ppm
+    else:
+        for y in range(tile_height):
+            for x in range(8):
+                i = (y << 3) + x
+                pixel_value = tile[i]
+                if args and pixel_value == 0:
+                    r, g, b = palette.get_true_rgb_colour(args[1], args[0][i])
+                else:
+                    try:
+                        r, g, b = palette.get_true_rgb_colour(paletteline, pixel_value)
+                    except:
+                        r, g, b = palette.get_true_rgb_colour(paletteline.get(), pixel_value)
+                ppm.append(r)
+                ppm.append(g)
+                ppm.append(b)
+        ppm = PPM_HEADER + ppm
     return(ppm)
     
 def caret_on_ppm(ppm):
@@ -378,34 +381,33 @@ class FontTool(tk.Frame):
         self.zero_btn = tk.Checkbutton(self, indicatoron = False, variable = self.zero_toggle)
         self.zero_btn.grid(column = 2, row = 3)
         
-        self.lower_a_cmb.bind('<<ComboboxSelected>>', self.combobox_changed)
-        self.upper_a_cmb.bind('<<ComboboxSelected>>', self.combobox_changed)
-        self.space_cmb.bind('<<ComboboxSelected>>', self.combobox_changed)
-        self.zero_cmb.bind('<<ComboboxSelected>>', self.combobox_changed)
-        
-        self.refresh()
-        
-    def combobox_changed(self, *args):
-        self.lower_a_offset = self.lower_a_cmb.current()
-        self.upper_a_offset = self.upper_a_cmb.current()
-        self.space_offset = self.space_cmb.current()
-        self.zero_offset = self.zero_cmb.current()
-        self.refresh()
+        self.lower_a_cmb.bind('<<ComboboxSelected>>', self.refresh)
+        self.upper_a_cmb.bind('<<ComboboxSelected>>', self.refresh)
+        self.space_cmb.bind('<<ComboboxSelected>>', self.refresh)
+        self.zero_cmb.bind('<<ComboboxSelected>>', self.refresh)
         
     def refresh(self, *args):
         tile_choices = []
         for i in range(len(self.tilelist)):
             tile_choices.append(format(i*(tile_height >> 3),'x'))
-        for i in [self.lower_a_cmb, self.upper_a_cmb, self.space_cmb, self.zero_cmb]:
-            i.config(values = tile_choices)
-        self.lower_a_btn.config(image = self.tilelist[self.lower_a_offset].variant(self.paletteline.get() << 2,4))
-        self.upper_a_btn.config(image = self.tilelist[self.upper_a_offset].variant(self.paletteline.get() << 2,4))
-        self.space_btn.config(image = self.tilelist[self.space_offset].variant(self.paletteline.get() << 2,4))
-        self.zero_btn.config(image = self.tilelist[self.zero_offset].variant(self.paletteline.get() << 2,4))
-        self.lower_a_cmb.current(self.lower_a_offset)
-        self.upper_a_cmb.current(self.upper_a_offset)
-        self.space_cmb.current(self.space_offset)
-        self.zero_cmb.current(self.zero_offset)
+        ting = [
+            [self.lower_a_cmb,self.lower_a_offset, self.lower_a_btn],
+            [self.upper_a_cmb,self.upper_a_offset, self.upper_a_btn],
+            [self.space_cmb,self.space_offset, self.space_btn],
+            [self.zero_cmb,self.zero_offset, self.zero_btn],
+            ]
+        for x, y, z in ting:
+            x.config(values = tile_choices)
+            if y < len(tile_choices):
+                x.current(y)
+            else:
+                x.current(0)
+            z.config(image = self.tilelist[x.current()].variant(self.paletteline.get() << 2,4))
+            
+        self.lower_a_offset = self.lower_a_cmb.current()
+        self.upper_a_offset = self.upper_a_cmb.current()
+        self.space_offset = self.space_cmb.current()
+        self.zero_offset = self.zero_cmb.current()
         
     def tile_changed(self, *args):
         if self.lower_a_toggle.get():
@@ -677,7 +679,10 @@ class PlaneMapEditor(Editor):
                         for i in range(2):
                             tile = self.planes[i][offset]
                             palettelines.append(tile.palette)
-                            tiles.append(self.tilelist[tile.address].transform(tile.xflip, tile.yflip))
+                            try:
+                                tiles.append(self.tilelist[tile.address].transform(tile.xflip, tile.yflip))
+                            except IndexError:
+                                tiles.append(None)
                             priority = tile.priority
                         if priority > 0:
                             ppm = tile_to_ppm(tiles[1], palettelines[1], self.palette, tiles[0], palettelines[0])
