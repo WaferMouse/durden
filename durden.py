@@ -426,11 +426,14 @@ class FontTool(tk.Frame):
         if self.zero_toggle.get():
             self.zero_offset = self.tile.get()
             
-        for i in [self.lower_a_toggle, self.upper_a_toggle, self.zero_toggle, self.space_toggle]:
-            i.set(0)
+        self.disable_selection()
             
         self.refresh()
         self.combo_to_offset()
+        
+    def disable_selection(self):
+        for i in [self.lower_a_toggle, self.upper_a_toggle, self.zero_toggle, self.space_toggle]:
+            i.set(0)
             
 class VerticalScrolledFrame(tk.Frame):
     """A pure Tkinter scrollable frame that actually works!
@@ -964,7 +967,7 @@ class App:
         if tool == 0:
             self.font_tool.forget()
             self.tile_editor.pack(fill = tk.Y, expand = 1)
-            self.font_tool.tile_changed()
+            self.font_tool.disable_selection()
         elif tool == 1:
             self.tile_editor.forget()
             self.font_tool.pack(fill = tk.Y, expand = 1)
