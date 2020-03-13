@@ -578,9 +578,9 @@ class PlaneMapEditor(Editor):
         
     def change_size(self, *args):
         if (self.var_width.get() != '') and (self.var_height.get() != ''):
-            diff = (int(self.var_width.get()) * int(self.var_height.get())) - (self.plane_map_width.get() * self.plane_map_height.get())
-            if diff > 0:
-                for plane in self.planes:
+            for plane in self.planes:
+                diff = (int(self.var_width.get()) * int(self.var_height.get())) - len(plane)
+                if diff > 0:
                     for i in range(diff):
                         plane.append(VDPIndex())
             self.plane_map_width.set(int(self.var_width.get()))
