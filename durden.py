@@ -548,13 +548,22 @@ class PlaneMapEditor(Editor):
         vcmd = (root.register(self.validate),
             '%d', '%i', '%P', '%s', '%S', '%v', '%V', '%W')
         
+        self.var_height = tk.StringVar()
+        self.var_width = tk.StringVar()
+        
+        self.var_height.set(str(28))
+        self.var_width.set(str(40))
+        
         tk.Label(control_frame, text = "Width").grid()
-        self.ent_width = tk.Entry(control_frame, width = 3, validate = 'key', validatecommand = vcmd)
+        self.ent_width = tk.Entry(control_frame, textvariable = self.var_width, width = 3, validate = 'key', validatecommand = vcmd)
         self.ent_width.grid(column = 1, row = 0)
         
         tk.Label(control_frame, text = "Height").grid()
-        self.ent_height = tk.Entry(control_frame, width = 3, validate = 'key', validatecommand = vcmd)
+        self.ent_height = tk.Entry(control_frame, textvariable = self.var_height, width = 3, validate = 'key', validatecommand = vcmd)
         self.ent_height.grid(column = 1, row = 1)
+        
+        self.var_height.trace('w',self.change_size)
+        self.var_width.trace('w',self.change_size)
         
         self.chk_priority = tk.Checkbutton(control_frame, text = "Priority", variable = self.priority)#, onvalue = 1 << 15)
         self.chk_priority.grid(columnspan = 2)
@@ -566,6 +575,18 @@ class PlaneMapEditor(Editor):
         self.deeptiles = {}
         self.caret_tile = None
         self.caret_pos = None
+        
+    def change_size(self, *args):
+        if (self.var_width.get() != '') and (self.var_height.get() != ''):
+            diff = (int(self.var_width.get()) * int(self.var_height.get())) - (self.plane_map_width.get() * self.plane_map_height.get())
+            if diff > 0:
+                for plane in self.planes:
+                    for i in range(diff):
+                        plane.append(VDPIndex())
+            self.plane_map_width.set(int(self.var_width.get()))
+            self.plane_map_height.set(int(self.var_height.get()))
+            self.viewer.change_size(int(self.var_width.get()), int(self.var_height.get()))
+            self.refresh()
         
     def validate(self, action, index, value_if_allowed,
                        prior_value, text, validation_type, trigger_type, widget_name):
@@ -704,7 +725,7 @@ class PlaneMapEditor(Editor):
                         img = img.zoom(2,2)
                         self.deeptiles[key] = img
                         
-                    self.viewer.itemconfigure(self.viewer.tiles[y][x], image = self.deeptiles[key])
+                    self.viewer.itemconfigure(self.viewer.tiles[offset], image = self.deeptiles[key])
         if self.tool and self.caret_pos:
             y = self.caret_pos[0]
             x = self.caret_pos[1]
@@ -713,7 +734,7 @@ class PlaneMapEditor(Editor):
             ppm = caret_on_ppm(tile_to_ppm(self.tilelist[tile.address].transform(tile.xflip, tile.yflip), tile.palette, self.palette))
             img = tkinter.PhotoImage(data=ppm, format='PPM')
             self.caret_tile = img.zoom(2,2)
-            self.viewer.itemconfigure(self.viewer.tiles[y][x], image = self.caret_tile)
+            self.viewer.itemconfigure(self.viewer.tiles[offset], image = self.caret_tile)
         
 class MapViewer(tk.Canvas):
     
@@ -726,11 +747,9 @@ class MapViewer(tk.Canvas):
         
         self.tiles = []
         for y in range(self.height_t):
-            flarp = []
             for x in range(self.width_t):
-                tile = self.create_image(((x*8))*2,((y*8))*2, anchor = tk.NW)
-                flarp.append(tile)
-            self.tiles.append(flarp.copy())
+                tile = self.create_image(x*16,y*16, anchor = tk.NW)
+                self.tiles.append(tile)
             
         self.error_image = tkinter.PhotoImage(width=8, height=8, data=error_ppm, format='PPM')
         self.error_image = self.error_image.zoom(2,2)
@@ -744,20 +763,49 @@ class MapViewer(tk.Canvas):
                     thistile = hex_split[offset]
                     tileflags = (thistile.asWord >> 11) & 0b11111
                     try:
-                        self.itemconfigure(self.tiles[y][x], image = self.tilelist[thistile.address].variant(tileflags, 2))
+                        self.itemconfigure(self.tiles[offset], image = self.tilelist[thistile.address].variant(tileflags, 2))
                     except IndexError:
-                        self.itemconfigure(self.tiles[y][x], image = self.error_image)
+                        self.itemconfigure(self.tiles[offset], image = self.error_image)
         else:
             offset = x + (y * self.width_t)
             thistile = hex_split[offset]
             tileflags = (thistile.asWord >> 11) & 0b11111
             try:
-                self.itemconfigure(self.tiles[y][x], image = self.tilelist[thistile.address].variant(tileflags, 2))
+                self.itemconfigure(self.tiles[offset], image = self.tilelist[thistile.address].variant(tileflags, 2))
             except IndexError:
-                self.itemconfigure(self.tiles[y][x], image = self.error_image)
+                self.itemconfigure(self.tiles[offset], image = self.error_image)
                 
     def refresh_2(self, hex_split, hex_split_2):
         pass
+        
+    def change_size(self, width, height):
+        self.width_t = width
+        self.height_t = height
+        self.config(width = width * 16, height = height * 16)
+        x = 0
+        y = 0
+        count = 0
+        for tile in self.tiles:
+            cur_coords = self.coords(tile)
+            cur_x = cur_coords[0]
+            cur_y = cur_coords[1]
+            self.move(tile, (x * 16) - cur_x, (y * 16) - cur_y)
+            x = (x + 1) % width
+            if x == 0:
+                y = y + 1
+            count = count + 1
+        new_tiles = (width * height) - count
+        if new_tiles > 0:
+            for i in range(new_tiles):
+                tile = self.create_image(x*16,y*16, anchor = tk.NW)
+                self.tiles.append(tile)
+                x = (x + 1) % width
+                if x == 0:
+                    y = y + 1
+        elif new_tiles < 0:
+            for i in range(new_tiles):
+                self.delete(self.tiles[-1])
+                del self.tiles[-1]
 
 class TileEditor(Editor):
 
