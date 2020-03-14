@@ -500,9 +500,9 @@ class ScrolledFrame(tk.Frame):
             s = event.state
             # Manual way to get the modifiers
             ctrl  = (s & 0x4) != 0
-            if ctrl and horizontalscroll and (defaultscroll == 'v'):
+            if (ctrl ^ (defaultscroll != 'v')) and horizontalscroll:
                 self.canvas.xview_scroll(int(-1*(event.delta/120)), "units")
-            elif (not ctrl) and verticalscroll and (defaultscroll == 'v'):
+            elif ((not ctrl) ^ (defaultscroll != 'v')) and verticalscroll:
                 self.canvas.yview_scroll(int(-1*(event.delta/120)), "units")
 
         self.bind('<Enter>', _bound_to_mousewheel)
