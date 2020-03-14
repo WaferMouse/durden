@@ -461,6 +461,8 @@ class VerticalScrolledFrame(tk.Frame):
         self.interior = interior = tk.Frame(canvas)
         interior_id = canvas.create_window(0, 0, window=interior,
                                            anchor=tk.NW)
+        
+        self.canvas = canvas
 
         # track changes to the canvas and frame width and sync them,
         # also updating the scrollbar
@@ -472,12 +474,80 @@ class VerticalScrolledFrame(tk.Frame):
                 # update the canvas's width to fit the inner frame
                 canvas.config(width=interior.winfo_reqwidth())
         interior.bind('<Configure>', _configure_interior)
+        
+        def _bound_to_mousewheel(event):
+            self.canvas.bind_all("<MouseWheel>", _on_mousewheel)   
 
-        def _configure_canvas(event):
-            if interior.winfo_reqwidth() != canvas.winfo_width():
-                # update the inner frame's width to fill the canvas
-                canvas.itemconfigure(interior_id, width=canvas.winfo_width())
-        #canvas.bind('<Configure>', _configure_canvas)
+        def _unbound_to_mousewheel(event):
+            self.canvas.unbind_all("<MouseWheel>") 
+
+        def _on_mousewheel(event):
+            self.canvas.yview_scroll(int(-1*(event.delta/120)), "units")
+
+        self.bind('<Enter>', _bound_to_mousewheel)
+        self.bind('<Leave>', _unbound_to_mousewheel)
+        
+class ScrolledFrame(tk.Frame):
+    """A pure Tkinter scrollable frame that actually works!
+    * Use the 'interior' attribute to place widgets inside the scrollable frame
+    * Construct and pack/place/grid normally
+    * This frame only allows vertical scrolling
+
+    """
+    def __init__(self, parent, *args, **kw):
+        tk.Frame.__init__(self, parent, *args, **kw)            
+
+        # create a canvas object and a vertical scrollbar for scrolling it
+        vscrollbar = tk.Scrollbar(self, orient=tk.VERTICAL)
+        hscrollbar = tk.Scrollbar(self, orient=tk.HORIZONTAL)
+        vscrollbar.grid(column = 1, sticky = 'nsew')#pack(fill=tk.Y, side=tk.RIGHT, expand=tk.FALSE)
+        canvas = tk.Canvas(self, bd=0, background = '#FFFFFF', highlightthickness=0,
+                        yscrollcommand=vscrollbar.set, xscrollcommand=hscrollbar.set)
+        canvas.grid(column = 0, row = 0, sticky = 'nsew')#pack(side=tk.LEFT, fill=tk.BOTH, expand=tk.TRUE)
+        hscrollbar.grid(row = 1, sticky = 'nsew')#pack(fill=tk.X, side=tk.BOTTOM, expand=tk.FALSE)
+        vscrollbar.config(command=canvas.yview)
+        hscrollbar.config(command=canvas.xview)
+
+        # reset the view
+        canvas.xview_moveto(0)
+        canvas.yview_moveto(0)
+
+        # create a frame inside the canvas which will be scrolled with it
+        self.interior = interior = tk.Frame(canvas)
+        interior_id = canvas.create_window(0, 0, window=interior,
+                                           anchor=tk.NW)
+                                           
+        canvas.config(width = 40*16, height = 28*16)
+        
+        self.canvas = canvas
+        
+        # track changes to the canvas and frame width and sync them,
+        # also updating the scrollbar
+        def _configure_interior(event):
+            # update the scrollbars to match the size of the inner frame
+            width = (interior.winfo_reqwidth(), interior.winfo_reqheight())
+            #canvas.config(scrollregion="0 0 %s %s" % size)
+            canvas.config(scrollregion=canvas.bbox("all"))
+        interior.bind('<Configure>', _configure_interior)
+        
+        def _bound_to_mousewheel(event):
+            self.canvas.bind_all("<MouseWheel>", _on_mousewheel)   
+
+        def _unbound_to_mousewheel(event):
+            self.canvas.unbind_all("<MouseWheel>") 
+
+        def _on_mousewheel(event):
+            s = event.state
+            # Manual way to get the modifiers
+            ctrl  = (s & 0x4) != 0
+            if ctrl:
+                self.canvas.xview_scroll(int(-1*(event.delta/120)), "units")
+            else:
+                self.canvas.yview_scroll(int(-1*(event.delta/120)), "units")
+
+        self.bind('<Enter>', _bound_to_mousewheel)
+        self.bind('<Leave>', _unbound_to_mousewheel)
+
             
 class TileBrowser(VerticalScrolledFrame):
     def __init__(self, parent, tilelist, var_tile, var_paletteline, *args, **options):
@@ -530,8 +600,11 @@ class PlaneMapEditor(Editor):
         self.tile = var_tile
         self.selector.config(values = ['Plane A', 'Plane B', 'Both'], width = 7)
         self.selector.current(0)
-        self.viewer = MapViewer(self, self.plane_map_width.get(), self.plane_map_height.get(), self.tilelist, height = self.plane_map_height.get()*16, width = self.plane_map_width.get()*16, bd=0, highlightthickness = 0)
-        self.viewer.grid(column = 1, row = 0, rowspan = 2)
+        self.viewer_portal = ScrolledFrame(self)
+        self.viewer_portal.grid(column = 1, row = 0, rowspan = 2, sticky='nsew')
+        self.viewer = MapViewer(self.viewer_portal.interior, self.plane_map_width.get(), self.plane_map_height.get(), self.tilelist, height = self.plane_map_height.get()*16, width = self.plane_map_width.get()*16, bd=0, highlightthickness = 0)
+        #self.viewer.grid(column = 1, row = 0, rowspan = 2)
+        self.viewer.grid()
         for bind in ["<ButtonPress-1>", "<B1-Motion>"]:
             self.viewer.bind(bind, lambda event: self.clicked(event))
         for bind in ["<ButtonPress-3>", "<Control-Button-1>", "<B3-Motion>", "<Control-B1-Motion>"]:
