@@ -435,100 +435,60 @@ class FontTool(tk.Frame):
         for i in [self.lower_a_toggle, self.upper_a_toggle, self.zero_toggle, self.space_toggle]:
             i.set(0)
             
-class VerticalScrolledFrame(tk.Frame):
-    """A pure Tkinter scrollable frame that actually works!
-    * Use the 'interior' attribute to place widgets inside the scrollable frame
-    * Construct and pack/place/grid normally
-    * This frame only allows vertical scrolling
-
-    """
-    def __init__(self, parent, *args, **kw):
-        tk.Frame.__init__(self, parent, *args, **kw)            
-
-        # create a canvas object and a vertical scrollbar for scrolling it
-        vscrollbar = tk.Scrollbar(self, orient=tk.VERTICAL)
-        vscrollbar.pack(fill=tk.Y, side=tk.RIGHT, expand=tk.FALSE)
-        canvas = tk.Canvas(self, bd=0, background = '#FFFFFF', highlightthickness=0,
-                        yscrollcommand=vscrollbar.set)
-        canvas.pack(side=tk.LEFT, fill=tk.BOTH, expand=tk.TRUE)
-        vscrollbar.config(command=canvas.yview)
-
-        # reset the view
-        canvas.xview_moveto(0)
-        canvas.yview_moveto(0)
-
-        # create a frame inside the canvas which will be scrolled with it
-        self.interior = interior = tk.Frame(canvas)
-        interior_id = canvas.create_window(0, 0, window=interior,
-                                           anchor=tk.NW)
-        
-        self.canvas = canvas
-
-        # track changes to the canvas and frame width and sync them,
-        # also updating the scrollbar
-        def _configure_interior(event):
-            # update the scrollbars to match the size of the inner frame
-            size = (interior.winfo_reqwidth(), interior.winfo_reqheight())
-            canvas.config(scrollregion="0 0 %s %s" % size)
-            if interior.winfo_reqwidth() != canvas.winfo_width():
-                # update the canvas's width to fit the inner frame
-                canvas.config(width=interior.winfo_reqwidth())
-        interior.bind('<Configure>', _configure_interior)
-        
-        def _bound_to_mousewheel(event):
-            self.canvas.bind_all("<MouseWheel>", _on_mousewheel)   
-
-        def _unbound_to_mousewheel(event):
-            self.canvas.unbind_all("<MouseWheel>") 
-
-        def _on_mousewheel(event):
-            self.canvas.yview_scroll(int(-1*(event.delta/120)), "units")
-
-        self.bind('<Enter>', _bound_to_mousewheel)
-        self.bind('<Leave>', _unbound_to_mousewheel)
-        
 class ScrolledFrame(tk.Frame):
     """A pure Tkinter scrollable frame that actually works!
     * Use the 'interior' attribute to place widgets inside the scrollable frame
     * Construct and pack/place/grid normally
-    * This frame only allows vertical scrolling
 
     """
-    def __init__(self, parent, *args, **kw):
+    def __init__(self, parent, horizontalscroll = False, verticalscroll = True, defaultscroll = 'v', canvas_width = None, canvas_height = None, *args, **kw):
         tk.Frame.__init__(self, parent, *args, **kw)            
 
         # create a canvas object and a vertical scrollbar for scrolling it
-        vscrollbar = tk.Scrollbar(self, orient=tk.VERTICAL)
-        hscrollbar = tk.Scrollbar(self, orient=tk.HORIZONTAL)
-        vscrollbar.grid(column = 1, sticky = 'nsew')#pack(fill=tk.Y, side=tk.RIGHT, expand=tk.FALSE)
-        canvas = tk.Canvas(self, bd=0, background = '#FFFFFF', highlightthickness=0,
-                        yscrollcommand=vscrollbar.set, xscrollcommand=hscrollbar.set)
-        canvas.grid(column = 0, row = 0, sticky = 'nsew')#pack(side=tk.LEFT, fill=tk.BOTH, expand=tk.TRUE)
-        hscrollbar.grid(row = 1, sticky = 'nsew')#pack(fill=tk.X, side=tk.BOTTOM, expand=tk.FALSE)
-        vscrollbar.config(command=canvas.yview)
-        hscrollbar.config(command=canvas.xview)
+        self.vscrollbar = tk.Scrollbar(self, orient=tk.VERTICAL)
+        self.hscrollbar = tk.Scrollbar(self, orient=tk.HORIZONTAL)
+        self.canvas = tk.Canvas(self, bd=0, background = '#FFFFFF', highlightthickness=0,
+                        yscrollcommand=self.vscrollbar.set, xscrollcommand=self.hscrollbar.set)
+        self.canvas.grid(column = 0, row = 0, sticky = 'nsew')#pack(side=tk.LEFT, fill=tk.BOTH, expand=tk.TRUE)
+        
+        if horizontalscroll:
+            self.hscrollbar.grid(row = 1, column = 0, sticky = 'nsew')#pack(fill=tk.X, side=tk.BOTTOM, expand=tk.FALSE)
+            self.hscrollbar.config(command=self.canvas.xview)
+            
+        if verticalscroll:
+            self.vscrollbar.grid(column = 1, row = 0, sticky = 'nsew')#pack(fill=tk.Y, side=tk.RIGHT, expand=tk.FALSE)
+            self.vscrollbar.config(command=self.canvas.yview)
 
         # reset the view
-        canvas.xview_moveto(0)
-        canvas.yview_moveto(0)
+        self.canvas.xview_moveto(0)
+        self.canvas.yview_moveto(0)
 
         # create a frame inside the canvas which will be scrolled with it
-        self.interior = interior = tk.Frame(canvas)
-        interior_id = canvas.create_window(0, 0, window=interior,
+        self.interior = tk.Frame(self.canvas)
+        self.interior_id = self.canvas.create_window(0, 0, window=self.interior,
                                            anchor=tk.NW)
-                                           
-        canvas.config(width = 40*16, height = 28*16)
         
-        self.canvas = canvas
+        self.canvas_width = canvas_width
+        self.canvas_height = canvas_height
+        self.grid_rowconfigure(0, weight=1)
+        self.grid_columnconfigure(0, weight=1)
+        
+        if canvas_width != None:
+            self.canvas.config(width = canvas_width)
+            
+        if canvas_height != None:
+            self.canvas.config(height = canvas_height)
         
         # track changes to the canvas and frame width and sync them,
         # also updating the scrollbar
         def _configure_interior(event):
             # update the scrollbars to match the size of the inner frame
-            width = (interior.winfo_reqwidth(), interior.winfo_reqheight())
-            #canvas.config(scrollregion="0 0 %s %s" % size)
-            canvas.config(scrollregion=canvas.bbox("all"))
-        interior.bind('<Configure>', _configure_interior)
+            self.canvas.config(scrollregion=self.canvas.bbox("all"))
+            if self.canvas_width == None:
+                if self.interior.winfo_reqwidth() != self.canvas.winfo_width():
+                    # update the canvas's width to fit the inner frame
+                    self.canvas.config(width=self.interior.winfo_reqwidth())
+        self.interior.bind('<Configure>', _configure_interior)
         
         def _bound_to_mousewheel(event):
             self.canvas.bind_all("<MouseWheel>", _on_mousewheel)   
@@ -540,18 +500,18 @@ class ScrolledFrame(tk.Frame):
             s = event.state
             # Manual way to get the modifiers
             ctrl  = (s & 0x4) != 0
-            if ctrl:
+            if ctrl and horizontalscroll and (defaultscroll == 'v'):
                 self.canvas.xview_scroll(int(-1*(event.delta/120)), "units")
-            else:
+            elif (not ctrl) and verticalscroll and (defaultscroll == 'v'):
                 self.canvas.yview_scroll(int(-1*(event.delta/120)), "units")
 
         self.bind('<Enter>', _bound_to_mousewheel)
         self.bind('<Leave>', _unbound_to_mousewheel)
 
             
-class TileBrowser(VerticalScrolledFrame):
+class TileBrowser(ScrolledFrame):
     def __init__(self, parent, tilelist, var_tile, var_paletteline, *args, **options):
-        VerticalScrolledFrame.__init__(self, parent, *args, **options)
+        ScrolledFrame.__init__(self, parent, canvas_width = 8*16)
         self.tilelist = tilelist
         self.tile = var_tile
         self.paletteline = var_paletteline
@@ -600,7 +560,7 @@ class PlaneMapEditor(Editor):
         self.tile = var_tile
         self.selector.config(values = ['Plane A', 'Plane B', 'Both'], width = 7)
         self.selector.current(0)
-        self.viewer_portal = ScrolledFrame(self)
+        self.viewer_portal = ScrolledFrame(self, canvas_height = 28*16, canvas_width = 40*16, horizontalscroll = True)
         self.viewer_portal.grid(column = 1, row = 0, rowspan = 2, sticky='nsew')
         self.viewer = MapViewer(self.viewer_portal.interior, self.plane_map_width.get(), self.plane_map_height.get(), self.tilelist, height = self.plane_map_height.get()*16, width = self.plane_map_width.get()*16, bd=0, highlightthickness = 0)
         #self.viewer.grid(column = 1, row = 0, rowspan = 2)
