@@ -4,19 +4,6 @@ import tkinter.filedialog
 import array
 import copy
 
-# width = self.plane_map_width.get() tiles (10 * 4)
-# height = self.plane_map_height.get() tiles (7 * 4)
-
-# paletteline colour tile 
-
-# map editor needs tile paletteline
-# tile editor needs tile paletteline colour
-# palette tool needs paletteline colour
-
-# map editor changes tile paletteline
-# tile editor changes tile colour
-# palette tool changes paletteline colour
-
 COLOUR_RAMP = [0, 29, 52, 70, 87, 101, 116, 130, 144, 158, 172, 187, 206, 228, 255]
 
 event2canvas = lambda e, c: (c.canvasx(e.x), c.canvasy(e.y))
@@ -449,14 +436,14 @@ class ScrolledFrame(tk.Frame):
         self.hscrollbar = tk.Scrollbar(self, orient=tk.HORIZONTAL)
         self.canvas = tk.Canvas(self, bd=0, background = '#FFFFFF', highlightthickness=0,
                         yscrollcommand=self.vscrollbar.set, xscrollcommand=self.hscrollbar.set)
-        self.canvas.grid(column = 0, row = 0, sticky = 'nsew')#pack(side=tk.LEFT, fill=tk.BOTH, expand=tk.TRUE)
+        self.canvas.grid(column = 0, row = 0, sticky = 'nsew')
         
         if horizontalscroll:
-            self.hscrollbar.grid(row = 1, column = 0, sticky = 'nsew')#pack(fill=tk.X, side=tk.BOTTOM, expand=tk.FALSE)
+            self.hscrollbar.grid(row = 1, column = 0, sticky = 'nsew')
             self.hscrollbar.config(command=self.canvas.xview)
             
         if verticalscroll:
-            self.vscrollbar.grid(column = 1, row = 0, sticky = 'nsew')#pack(fill=tk.Y, side=tk.RIGHT, expand=tk.FALSE)
+            self.vscrollbar.grid(column = 1, row = 0, sticky = 'nsew')
             self.vscrollbar.config(command=self.canvas.yview)
 
         # reset the view
@@ -563,7 +550,6 @@ class PlaneMapEditor(Editor):
         self.viewer_portal = ScrolledFrame(self, canvas_height = 28*16, canvas_width = 40*16, horizontalscroll = True)
         self.viewer_portal.grid(column = 1, row = 0, rowspan = 2, sticky='nsew')
         self.viewer = MapViewer(self.viewer_portal.interior, self.plane_map_width.get(), self.plane_map_height.get(), self.tilelist, height = self.plane_map_height.get()*16, width = self.plane_map_width.get()*16, bd=0, highlightthickness = 0)
-        #self.viewer.grid(column = 1, row = 0, rowspan = 2)
         self.viewer.grid()
         for bind in ["<ButtonPress-1>", "<B1-Motion>"]:
             self.viewer.bind(bind, lambda event: self.clicked(event))
@@ -598,12 +584,12 @@ class PlaneMapEditor(Editor):
         self.var_height.trace('w',self.change_size)
         self.var_width.trace('w',self.change_size)
         
-        self.chk_priority = tk.Checkbutton(control_frame, text = "Priority", variable = self.priority)#, onvalue = 1 << 15)
+        self.chk_priority = tk.Checkbutton(control_frame, text = "Priority", variable = self.priority)
         self.chk_priority.grid(columnspan = 2)
         
-        self.chk_xflip = tk.Checkbutton(control_frame, text = "X flip", variable = self.xflip)#, onvalue = 1 << 11)
+        self.chk_xflip = tk.Checkbutton(control_frame, text = "X flip", variable = self.xflip)
         self.chk_xflip.grid(columnspan = 2)
-        self.chk_yflip = tk.Checkbutton(control_frame, text = "Y flip", variable = self.yflip)#, onvalue = 1 << 12)
+        self.chk_yflip = tk.Checkbutton(control_frame, text = "Y flip", variable = self.yflip)
         self.chk_yflip.grid(columnspan = 2)
         self.deeptiles = {}
         self.caret_tile = None
@@ -897,7 +883,6 @@ class TileEditor(Editor):
         for i in range(len(self.tilelist)):
             tile_choices.append(format(i*(tile_height >> 3),'x'))
             self.selector.config(values = tile_choices)
-        #tile_choices.append(format(len(tile_choices),'x'))
         self.selector.config(values = tile_choices)
         self.remove_tile.config(state = tk.NORMAL)
         
@@ -905,7 +890,6 @@ class TileEditor(Editor):
         
     def remove_tile(self):
         del self.tilelist[self.selection.get()]
-        #del tile_choices[-1]
         tile_choices = []
 
         for i in range(len(self.tilelist)):
@@ -972,12 +956,10 @@ class App:
         self.map = []
 
         for y in range(self.plane_map_height.get()):
-            #row = []
             for x in range(self.plane_map_width.get()):
                 self.map.append(VDPIndex())
                 self.map[-1].yflip = y & 1
                 self.map[-1].address = x & 1
-            #self.map.append(row)
 
         self.map2 = copy.deepcopy(self.map)
 
@@ -1142,7 +1124,6 @@ class App:
             out = array.array('B')
             for i in range(self.plane_map_height.get() * self.plane_map_width.get()):
                 y = self.planes[0][i]
-                #for x in y:
                 out.append(y.asWord>>8)
                 out.append(y.asWord&0xFF)
         
@@ -1155,7 +1136,6 @@ class App:
             out = array.array('B')
             for i in range(self.plane_map_height.get() * self.plane_map_width.get()):
                 y = self.planes[1][i]
-                #for x in y:
                 out.append(y.asWord>>8)
                 out.append(y.asWord&0xFF)
         
