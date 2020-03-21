@@ -28,6 +28,8 @@ char_list = [' ']
 
 import ctypes
 c_uint16 = ctypes.c_uint16
+c_uint8 = ctypes.c_uint8
+c_ulonglong = ctypes.c_ulonglong
 
 for i in range(26):
     char_list.append(chr(i + 65))
@@ -66,6 +68,57 @@ for i in range(len(error_tile)):
     error_ppm.append(0)
     error_ppm.append(0)
 error_ppm = PPM_HEADER + error_ppm
+
+class PhotoImage_Ex(tk.PhotoImage):
+
+    def transparency_set(self, x, y, boolean):
+        #from https://github.com/python/cpython/commit/50866e9ed3e4e0ebb60c20c3483a8df424c02722
+        """Set the transparency of the pixel at x,y."""
+        self.tk.call(self.name, 'transparency', 'set', x, y, boolean)
+
+class SpriteFields( ctypes.LittleEndianStructure ):
+    _fields_ = [
+        ("u1",          c_ulonglong,6),
+        ("ypos",        c_ulonglong,10),
+        
+        ("u2",          c_ulonglong,4),
+        ("width",       c_ulonglong,2),
+        ("height",       c_ulonglong,2),
+        ("u3",          c_ulonglong,1),
+        ("link",        c_ulonglong,7),
+        
+        ("address",     c_ulonglong, 11 ),
+        ("xflip",       c_ulonglong, 1 ),
+        ("yflip",       c_ulonglong, 1 ),
+        ("palette",     c_ulonglong, 2 ),
+        ("priority",    c_ulonglong, 1 ),
+        
+        #("u3",          c_ulonglong,7),
+        #("xpos",        c_ulonglong,9),
+        ("xpos",        c_ulonglong,16), #i will regret this someday
+        ]
+        
+def decode_sonic3_sprite(sprite):
+    # YY 0S VV VV XX XX
+    pieces = []
+    for i in sprite:
+        pieces.append(SpriteIndex())
+        new_piece = (i & (0xFFFF << 32)) << 8
+        new_piece = new_piece | (i & 0xFFFFFFFF)
+        pieces[-1].asLongLong = new_piece
+    return(pieces)
+        
+        
+def render_spritemap(palette, tilelist, sprite):
+    pieces = decode_sonic3_sprite(sprite)
+    return()
+
+class SpriteIndex( ctypes.Union ):
+    _anonymous_ = ("field",)
+    _fields_ = [
+        ("field",    SpriteFields ),
+        ("asLongLong", c_ulonglong    )
+        ]
 
 class VDPFields( ctypes.LittleEndianStructure ): #PCCY XAAA AAAA AAAA
     _fields_ = [
@@ -181,8 +234,9 @@ class Tile:
     def __init__(self, int_tile, palette):
         self.palette = palette
         self.int_tile = bytearray(int_tile)
-        ppm = tile_to_ppm(self.int_tile, 0, self.palette)
-        self.variants = {(0,1): tkinter.PhotoImage(width=8, height=tile_height, data=ppm, format='PPM')}
+        #ppm = tile_to_ppm(self.int_tile, 0, self.palette)
+        #self.variants = {(0,1): tkinter.PhotoImage(width=8, height=tile_height, data=ppm, format='PPM')}
+        self.variants = {(0,1): tile_to_ppm(self.int_tile, 0, self.palette, output_image = True)}
         self.marked_dirty = []
         
     def variant(self, flags, zoom=1): # flags = PCCY XAAA
@@ -202,8 +256,9 @@ class Tile:
             else:
                 yflip = (flags >> 1) & 1
                 xflip = flags & 1
-                ppm = tile_to_ppm(self.transform(xflip, yflip), paletteline, self.palette)
-                img = tkinter.PhotoImage(data=ppm, format='PPM')
+                #ppm = tile_to_ppm(self.transform(xflip, yflip), paletteline, self.palette)
+                #img = tkinter.PhotoImage(data=ppm, format='PPM')
+                img = tile_to_ppm(self.transform(xflip, yflip), paletteline, self.palette, output_image = True)
                 self.variants[(flags, zoom)] = img
         return(self.variants[(flags, zoom)])
         
@@ -273,11 +328,14 @@ class Tile:
         for i in smarked_dirty:
             del self.variants[i]
     
-def tile_to_ppm(tile, paletteline, palette, *args):
+def tile_to_ppm(tile, paletteline, palette, output_image = False, *args):
     ppm = bytearray()
     palettelineoffset = paletteline << 6 #16 * 4
     if tile == None or (None in args):
         ppm = error_ppm
+        if output_image:
+            image = PhotoImage_Ex(width=8, height=8, data=ppm, format='PPM')
+            return(image)
     else:
         for y in range(tile_height):
             for x in range(8):
@@ -294,6 +352,14 @@ def tile_to_ppm(tile, paletteline, palette, *args):
                 ppm.append(g)
                 ppm.append(b)
         ppm = PPM_HEADER + ppm
+        if output_image:
+            image = PhotoImage_Ex(width=8, height=8, data=ppm, format='PPM')
+            for y in range(tile_height):
+                for x in range(8):
+                    i = (y << 3) + x
+                    if not bool(tile[i]):
+                        image.transparency_set(x,y,True)
+            return(image)
     return(ppm)
     
 def caret_on_ppm(ppm):
@@ -422,6 +488,20 @@ class FontTool(tk.Frame):
         for i in [self.lower_a_toggle, self.upper_a_toggle, self.zero_toggle, self.space_toggle]:
             i.set(0)
             
+class CustomScrollbar(tk.Scrollbar):
+    def __init__(self, *args, **kw):
+        tk.Scrollbar.__init__(self, *args, **kw)
+        
+    def seta(self, *args, **kw):
+        #print('args: ',*args,'kw: ', **kw)
+        self.set(*args, **kw)
+        
+class SpriteMapRenderer:
+    def __init__(self, canvas, tilelist):
+        self.tilelist = tilelist
+        self.canvas = canvas
+
+            
 class ScrolledFrame(tk.Frame):
     """A pure Tkinter scrollable frame that actually works!
     * Use the 'interior' attribute to place widgets inside the scrollable frame
@@ -432,10 +512,10 @@ class ScrolledFrame(tk.Frame):
         tk.Frame.__init__(self, parent, *args, **kw)            
 
         # create a canvas object and a vertical scrollbar for scrolling it
-        self.vscrollbar = tk.Scrollbar(self, orient=tk.VERTICAL)
-        self.hscrollbar = tk.Scrollbar(self, orient=tk.HORIZONTAL)
+        self.vscrollbar = CustomScrollbar(self, orient=tk.VERTICAL)
+        self.hscrollbar = CustomScrollbar(self, orient=tk.HORIZONTAL)
         self.canvas = tk.Canvas(self, bd=0, background = '#FFFFFF', highlightthickness=0,
-                        yscrollcommand=self.vscrollbar.set, xscrollcommand=self.hscrollbar.set)
+                        yscrollcommand=lambda *args: self.vscrollbar.seta(*args), xscrollcommand=lambda *args: self.hscrollbar.seta(*args))
         self.canvas.grid(column = 0, row = 0, sticky = 'nsew')
         
         if horizontalscroll:
@@ -471,6 +551,7 @@ class ScrolledFrame(tk.Frame):
         def _configure_interior(event):
             # update the scrollbars to match the size of the inner frame
             self.canvas.config(scrollregion=self.canvas.bbox("all"))
+            print(self.canvas.bbox("all"))
             if self.canvas_width == None:
                 if self.interior.winfo_reqwidth() != self.canvas.winfo_width():
                     # update the canvas's width to fit the inner frame
@@ -549,7 +630,7 @@ class PlaneMapEditor(Editor):
         self.selector.current(0)
         self.viewer_portal = ScrolledFrame(self, canvas_height = 28*16, canvas_width = 40*16, horizontalscroll = True)
         self.viewer_portal.grid(column = 1, row = 0, rowspan = 2, sticky='nsew')
-        self.viewer = MapViewer(self.viewer_portal.interior, self.plane_map_width.get(), self.plane_map_height.get(), self.tilelist, height = self.plane_map_height.get()*16, width = self.plane_map_width.get()*16, bd=0, highlightthickness = 0)
+        self.viewer = MapViewer(self.viewer_portal.interior, self.plane_map_width.get(), self.plane_map_height.get(), self.tilelist, self.planes, height = self.plane_map_height.get()*16, width = self.plane_map_width.get()*16, bd=0, highlightthickness = 0)
         self.viewer.grid()
         for bind in ["<ButtonPress-1>", "<B1-Motion>"]:
             self.viewer.bind(bind, lambda event: self.clicked(event))
@@ -594,6 +675,28 @@ class PlaneMapEditor(Editor):
         self.deeptiles = {}
         self.caret_tile = None
         self.caret_pos = None
+    
+
+        caret_ppm = array.array('B')
+        for i in range(len(caret_mask)):
+            for n in range(3):
+                caret_ppm.append([0,0,255][caret_mask[i]])
+                
+        caret_ppm = PPM_HEADER + caret_ppm
+                
+        self.caret_image = PhotoImage_Ex(width=8, height=8, data=caret_ppm, format='PPM')
+
+        for y in range(8):
+            y_offset = y * 8
+            for x in range(8):
+                if not caret_mask[y_offset + x]:
+                    self.caret_image.transparency_set(x,y,True)
+                    
+        self.caret_image = self.caret_image.zoom(2,2)
+                    
+        self.caret = self.viewer.create_image(0,0, anchor = tk.NW)
+        self.viewer.itemconfigure(self.caret, image = self.caret_image, state = 'hidden')
+        self.viewer.tag_raise(self.caret)
         
     def change_size(self, *args):
         if (self.var_width.get() != '') and (self.var_height.get() != ''):
@@ -715,65 +818,44 @@ class PlaneMapEditor(Editor):
                 self.tile.set(thistile.address)
             
     def refresh(self, x=None, y=None):
-        if self.selection.get() < 2:
-            self.viewer.refresh(self.planes[self.selection.get()], x, y)
-        else:
-            self.deeptiles = {}
-            for y in range(self.plane_map_height.get()):
-                offset_y = y * self.plane_map_width.get()
-                for x in range(self.plane_map_width.get()):
-                    offset = offset_y + x
-                    key = (self.planes[0][offset].asWord, self.planes[1][offset].asWord)
-                    if key not in self.deeptiles:
-                        tiles = []
-                        palettelines = []
-                        priority = 0
-                        for i in range(2):
-                            tile = self.planes[i][offset]
-                            palettelines.append(tile.palette)
-                            try:
-                                tiles.append(self.tilelist[tile.address].transform(tile.xflip, tile.yflip))
-                            except IndexError:
-                                tiles.append(None)
-                            priority = tile.priority
-                        if priority > 0:
-                            ppm = tile_to_ppm(tiles[1], palettelines[1], self.palette, tiles[0], palettelines[0])
-                        else:
-                            ppm = tile_to_ppm(tiles[0], palettelines[0], self.palette, tiles[1], palettelines[1])
-                        img = tkinter.PhotoImage(data=ppm, format='PPM')
-                        img = img.zoom(2,2)
-                        self.deeptiles[key] = img
-                        
-                    self.viewer.itemconfigure(self.viewer.tiles[offset], image = self.deeptiles[key])
+        self.viewer.refresh(x, y, self.selection.get())
         if self.tool and self.caret_pos:
             y = self.caret_pos[0]
             x = self.caret_pos[1]
-            offset = (y * self.plane_map_width.get()) + x
-            tile = self.planes[1][offset]
-            ppm = caret_on_ppm(tile_to_ppm(self.tilelist[tile.address].transform(tile.xflip, tile.yflip), tile.palette, self.palette))
-            img = tkinter.PhotoImage(data=ppm, format='PPM')
-            self.caret_tile = img.zoom(2,2)
-            self.viewer.itemconfigure(self.viewer.tiles[offset], image = self.caret_tile)
+            cur_coords = self.viewer.coords(self.caret)
+            cur_x = cur_coords[0]
+            cur_y = cur_coords[1]
+            self.viewer.move(self.caret, (x * 16) - cur_x, (y * 16) - cur_y)
+            self.viewer.itemconfigure(self.caret, state = 'normal')
+            self.viewer.tag_raise(self.caret)
+        else:
+            self.viewer.itemconfigure(self.caret, state = 'hidden')
         
 class MapViewer(tk.Canvas):
     
-    def __init__(self, parent, width_t, height_t, tilelist, *args, **options):
+    def __init__(self, parent, width_t, height_t, tilelist, planes, *args, **options):
         tk.Canvas.__init__(self, parent, *args, **options)
         self.tilelist = tilelist
         
         self.width_t = width_t
         self.height_t   = height_t
         
-        self.tiles = []
+        self.config(background = 'black')
+        
+        self.tiles = [[],[]]
         for y in range(self.height_t):
             for x in range(self.width_t):
-                tile = self.create_image(x*16,y*16, anchor = tk.NW)
-                self.tiles.append(tile)
+                for i in [1,0]:
+                    tile = self.create_image(x*16,y*16, anchor = tk.NW)
+                    self.tiles[i].append(tile)
             
         self.error_image = tkinter.PhotoImage(width=8, height=8, data=error_ppm, format='PPM')
         self.error_image = self.error_image.zoom(2,2)
+        self.planes = planes
             
-    def refresh(self, hex_split, x, y): #PCCY XAAA AAAA AAAA
+    def refresh(self, x, y, plane): #PCCY XAAA AAAA AAAA
+        #plane = plane % 2
+        hex_split = self.planes[plane % 2]
         if not x:
             for y in range(self.height_t):
                 offset_y = y * self.width_t
@@ -782,17 +864,23 @@ class MapViewer(tk.Canvas):
                     thistile = hex_split[offset]
                     tileflags = (thistile.asWord >> 11) & 0b11111
                     try:
-                        self.itemconfigure(self.tiles[offset], image = self.tilelist[thistile.address].variant(tileflags, 2))
+                        self.itemconfigure(self.tiles[plane % 2][offset], image = self.tilelist[thistile.address].variant(tileflags, 2), state='normal')
                     except IndexError:
-                        self.itemconfigure(self.tiles[offset], image = self.error_image)
+                        self.itemconfigure(self.tiles[plane % 2][offset], image = self.error_image, state='normal')
+                    self.itemconfigure(self.tiles[(plane % 2)^1][offset], state=['hidden', 'normal'][plane > 1])
+            #for tile in self.tiles[0]:
+            #    self.tag_raise(tile)
+            for tile in self.tiles[1]:
+                self.tag_lower(tile)
         else:
             offset = x + (y * self.width_t)
             thistile = hex_split[offset]
             tileflags = (thistile.asWord >> 11) & 0b11111
             try:
-                self.itemconfigure(self.tiles[offset], image = self.tilelist[thistile.address].variant(tileflags, 2))
+                self.itemconfigure(self.tiles[plane % 2][offset], image = self.tilelist[thistile.address].variant(tileflags, 2))
             except IndexError:
-                self.itemconfigure(self.tiles[offset], image = self.error_image)
+                self.itemconfigure(self.tiles[plane % 2][offset], image = self.error_image, state='normal')
+            self.itemconfigure(self.tiles[(plane % 2)^1][offset], state=['hidden', 'normal'][plane > 1])
                 
     def refresh_2(self, hex_split, hex_split_2):
         pass
@@ -801,30 +889,37 @@ class MapViewer(tk.Canvas):
         self.width_t = width
         self.height_t = height
         self.config(width = width * 16, height = height * 16)
-        x = 0
-        y = 0
-        count = 0
-        for tile in self.tiles:
-            cur_coords = self.coords(tile)
-            cur_x = cur_coords[0]
-            cur_y = cur_coords[1]
-            self.move(tile, (x * 16) - cur_x, (y * 16) - cur_y)
-            x = (x + 1) % width
-            if x == 0:
-                y = y + 1
-            count = count + 1
+        for i in [1,0]:
+            x = 0
+            y = 0
+            count = 0
+            for tile in self.tiles[i]:
+                cur_coords = self.coords(tile)
+                cur_x = cur_coords[0]
+                cur_y = cur_coords[1]
+                self.move(tile, (x * 16) - cur_x, (y * 16) - cur_y)
+                x = (x + 1) % width
+                if x == 0:
+                    y = y + 1
+                count = count + 1
         new_tiles = (width * height) - count
         if new_tiles > 0:
             for i in range(new_tiles):
-                tile = self.create_image(x*16,y*16, anchor = tk.NW)
-                self.tiles.append(tile)
+                for plane in [1,0]:
+                    tile = self.create_image(x*16,y*16, anchor = tk.NW)
+                    self.tiles[plane].append(tile)
                 x = (x + 1) % width
                 if x == 0:
                     y = y + 1
         elif new_tiles < 0:
             for i in range(new_tiles):
-                self.delete(self.tiles[-1])
-                del self.tiles[-1]
+                for plane in [1,0]:
+                    self.delete(self.tiles[plane][-1])
+                    del self.tiles[plane][-1]
+        #for tile in self.tiles[0]:
+            #self.tag_raise(tile)
+        for tile in self.tiles[1]:
+            self.tag_lower(tile)
 
 class TileEditor(Editor):
 
@@ -1034,6 +1129,7 @@ class App:
         elif tool == 1:
             self.tile_editor.forget()
             self.font_tool.pack(fill = tk.Y, expand = 1)
+        self.map_editor.refresh()
         
     def change_palette(self, event=''):
         rgb = (self.palette_r.current()*2, self.palette_g.current()*2, self.palette_b.current()*2)
