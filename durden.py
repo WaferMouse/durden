@@ -234,8 +234,6 @@ class Tile:
     def __init__(self, int_tile, palette):
         self.palette = palette
         self.int_tile = bytearray(int_tile)
-        #ppm = tile_to_ppm(self.int_tile, 0, self.palette)
-        #self.variants = {(0,1): tkinter.PhotoImage(width=8, height=tile_height, data=ppm, format='PPM')}
         self.variants = {(0,1): tile_to_ppm(self.int_tile, 0, self.palette, output_image = True)}
         self.marked_dirty = []
         
@@ -256,8 +254,6 @@ class Tile:
             else:
                 yflip = (flags >> 1) & 1
                 xflip = flags & 1
-                #ppm = tile_to_ppm(self.transform(xflip, yflip), paletteline, self.palette)
-                #img = tkinter.PhotoImage(data=ppm, format='PPM')
                 img = tile_to_ppm(self.transform(xflip, yflip), paletteline, self.palette, output_image = True)
                 self.variants[(flags, zoom)] = img
         return(self.variants[(flags, zoom)])
@@ -307,6 +303,7 @@ class Tile:
                         out_y = y
                         
                     self.variants[flags,zoom].put(newcolour, to = (out_x,out_y))
+                    self.variants[flags,zoom].transparency_set(out_x,out_y,not bool(colour))
             root.event_generate('<<PutPixel>>')
 
     def refresh_2(self):
@@ -487,14 +484,6 @@ class FontTool(tk.Frame):
     def disable_selection(self):
         for i in [self.lower_a_toggle, self.upper_a_toggle, self.zero_toggle, self.space_toggle]:
             i.set(0)
-            
-class CustomScrollbar(tk.Scrollbar):
-    def __init__(self, *args, **kw):
-        tk.Scrollbar.__init__(self, *args, **kw)
-        
-    def seta(self, *args, **kw):
-        #print('args: ',*args,'kw: ', **kw)
-        self.set(*args, **kw)
         
 class SpriteMapRenderer:
     def __init__(self, canvas, tilelist):
@@ -512,10 +501,10 @@ class ScrolledFrame(tk.Frame):
         tk.Frame.__init__(self, parent, *args, **kw)            
 
         # create a canvas object and a vertical scrollbar for scrolling it
-        self.vscrollbar = CustomScrollbar(self, orient=tk.VERTICAL)
-        self.hscrollbar = CustomScrollbar(self, orient=tk.HORIZONTAL)
+        self.vscrollbar = tk.Scrollbar(self, orient=tk.VERTICAL)
+        self.hscrollbar = tk.Scrollbar(self, orient=tk.HORIZONTAL)
         self.canvas = tk.Canvas(self, bd=0, background = '#FFFFFF', highlightthickness=0,
-                        yscrollcommand=lambda *args: self.vscrollbar.seta(*args), xscrollcommand=lambda *args: self.hscrollbar.seta(*args))
+                        yscrollcommand=lambda *args: self.vscrollbar.set(*args), xscrollcommand=lambda *args: self.hscrollbar.set(*args))
         self.canvas.grid(column = 0, row = 0, sticky = 'nsew')
         
         if horizontalscroll:
@@ -551,7 +540,6 @@ class ScrolledFrame(tk.Frame):
         def _configure_interior(event):
             # update the scrollbars to match the size of the inner frame
             self.canvas.config(scrollregion=self.canvas.bbox("all"))
-            print(self.canvas.bbox("all"))
             if self.canvas_width == None:
                 if self.interior.winfo_reqwidth() != self.canvas.winfo_width():
                     # update the canvas's width to fit the inner frame
@@ -632,6 +620,7 @@ class PlaneMapEditor(Editor):
         self.viewer_portal.grid(column = 1, row = 0, rowspan = 2, sticky='nsew')
         self.viewer = MapViewer(self.viewer_portal.interior, self.plane_map_width.get(), self.plane_map_height.get(), self.tilelist, self.planes, height = self.plane_map_height.get()*16, width = self.plane_map_width.get()*16, bd=0, highlightthickness = 0)
         self.viewer.grid()
+        self.viewer.config(background = self.palette.get_true_tk_colour(0,0))
         for bind in ["<ButtonPress-1>", "<B1-Motion>"]:
             self.viewer.bind(bind, lambda event: self.clicked(event))
         for bind in ["<ButtonPress-3>", "<Control-Button-1>", "<B3-Motion>", "<Control-B1-Motion>"]:
@@ -819,6 +808,7 @@ class PlaneMapEditor(Editor):
             
     def refresh(self, x=None, y=None):
         self.viewer.refresh(x, y, self.selection.get())
+        self.viewer.config(background = self.palette.get_true_tk_colour(0,0))
         if self.tool and self.caret_pos:
             y = self.caret_pos[0]
             x = self.caret_pos[1]
@@ -854,36 +844,31 @@ class MapViewer(tk.Canvas):
         self.planes = planes
             
     def refresh(self, x, y, plane): #PCCY XAAA AAAA AAAA
-        #plane = plane % 2
-        hex_split = self.planes[plane % 2]
         if not x:
+            if plane > 1:
+                self.refresh(None, None, 1)
             for y in range(self.height_t):
                 offset_y = y * self.width_t
                 for x in range(self.width_t):
                     offset = x + offset_y
-                    thistile = hex_split[offset]
-                    tileflags = (thistile.asWord >> 11) & 0b11111
-                    try:
-                        self.itemconfigure(self.tiles[plane % 2][offset], image = self.tilelist[thistile.address].variant(tileflags, 2), state='normal')
-                    except IndexError:
-                        self.itemconfigure(self.tiles[plane % 2][offset], image = self.error_image, state='normal')
-                    self.itemconfigure(self.tiles[(plane % 2)^1][offset], state=['hidden', 'normal'][plane > 1])
-            #for tile in self.tiles[0]:
-            #    self.tag_raise(tile)
-            for tile in self.tiles[1]:
-                self.tag_lower(tile)
+                    self.refresh_2(offset, plane)
         else:
             offset = x + (y * self.width_t)
-            thistile = hex_split[offset]
-            tileflags = (thistile.asWord >> 11) & 0b11111
-            try:
-                self.itemconfigure(self.tiles[plane % 2][offset], image = self.tilelist[thistile.address].variant(tileflags, 2))
-            except IndexError:
-                self.itemconfigure(self.tiles[plane % 2][offset], image = self.error_image, state='normal')
-            self.itemconfigure(self.tiles[(plane % 2)^1][offset], state=['hidden', 'normal'][plane > 1])
+            self.refresh_2(offset, plane)
                 
-    def refresh_2(self, hex_split, hex_split_2):
-        pass
+    def refresh_2(self, offset, plane):
+        thistile = self.planes[plane % 2][offset]
+        tileflags = (thistile.asWord >> 11) & 0b11111
+        try:
+            self.itemconfigure(self.tiles[plane % 2][offset], image = self.tilelist[thistile.address].variant(tileflags, 2), state='normal')
+        except IndexError:
+            self.itemconfigure(self.tiles[plane % 2][offset], image = self.error_image, state='normal')
+        self.itemconfigure(self.tiles[(plane % 2)^1][offset], state=['hidden', 'normal'][plane > 1])
+        priority = self.planes[0][offset].priority - self.planes[1][offset].priority
+        if priority < 0:
+            self.tag_lower(self.tiles[0][offset])
+        else:
+            self.tag_raise(self.tiles[0][offset])
         
     def change_size(self, width, height):
         self.width_t = width
@@ -916,10 +901,13 @@ class MapViewer(tk.Canvas):
                 for plane in [1,0]:
                     self.delete(self.tiles[plane][-1])
                     del self.tiles[plane][-1]
-        #for tile in self.tiles[0]:
-            #self.tag_raise(tile)
-        for tile in self.tiles[1]:
-            self.tag_lower(tile)
+            
+        for offset in range(len(self.tiles[0])):
+            priority = self.planes[0][offset].priority - self.planes[1][offset].priority
+            if priority < 0:
+                self.tag_lower(self.tiles[0][offset])
+            else:
+                self.tag_raise(self.tiles[0][offset])
 
 class TileEditor(Editor):
 
@@ -1268,6 +1256,9 @@ class App:
         self.tile_browser.refresh()
         self.map_editor.refresh()
         self.font_tool.refresh()
+        self.tile_editor.viewer.config(background = self.palette.get_true_tk_colour(0,0))
+        for i in self.tile_browser.tiles:
+            i.config(background = self.palette.get_true_tk_colour(0,0))
         
     def put_pixel(self):
         self.tile_editor.refresh()
