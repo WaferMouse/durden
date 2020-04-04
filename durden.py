@@ -29,7 +29,8 @@ char_list = [' ']
 import ctypes
 c_uint16 = ctypes.c_uint16
 c_uint8 = ctypes.c_uint8
-c_ulonglong = ctypes.c_ulonglong
+c_ulonglong = ctypes.c_uint64
+c_int16 = ctypes.c_int16
 
 for i in range(26):
     char_list.append(chr(i + 65))
@@ -78,14 +79,9 @@ class PhotoImage_Ex(tk.PhotoImage):
 
 class SpriteFields( ctypes.LittleEndianStructure ):
     _fields_ = [
-        ("u1",          c_ulonglong,6),
-        ("ypos",        c_ulonglong,10),
-        
-        ("u2",          c_ulonglong,4),
-        ("width",       c_ulonglong,2),
-        ("height",       c_ulonglong,2),
-        ("u3",          c_ulonglong,1),
-        ("link",        c_ulonglong,7),
+        #("u3",          c_ulonglong,7),
+        #("xpos",        c_ulonglong,9),
+        ("xpos",        c_ulonglong,16), #i will regret this someday
         
         ("address",     c_ulonglong, 11 ),
         ("xflip",       c_ulonglong, 1 ),
@@ -93,13 +89,21 @@ class SpriteFields( ctypes.LittleEndianStructure ):
         ("palette",     c_ulonglong, 2 ),
         ("priority",    c_ulonglong, 1 ),
         
-        #("u3",          c_ulonglong,7),
-        #("xpos",        c_ulonglong,9),
-        ("xpos",        c_ulonglong,16), #i will regret this someday
+        ("link",        c_ulonglong,7),
+        ("u3",          c_ulonglong,1),
+        ("height",       c_ulonglong,2),
+        ("width",       c_ulonglong,2),
+        ("u2",          c_ulonglong,4),
+        
+        #("u1",          c_ulonglong,6),
+        #("ypos",        c_ulonglong,10),
+        ("ypos",        c_ulonglong,16),
         ]
         
 def decode_sonic3_sprite(sprite):
-    # YY 0S VV VV XX XX
+    #PCCY XAAA AAAA AAAA
+    #      YY 0S VV VV XX XX
+    #YY YY 0S LL VV VV XX XX
     pieces = []
     for i in sprite:
         pieces.append(SpriteIndex())
@@ -107,11 +111,6 @@ def decode_sonic3_sprite(sprite):
         new_piece = new_piece | (i & 0xFFFFFFFF)
         pieces[-1].asLongLong = new_piece
     return(pieces)
-        
-        
-def render_spritemap(palette, tilelist, sprite):
-    pieces = decode_sonic3_sprite(sprite)
-    return()
 
 class SpriteIndex( ctypes.Union ):
     _anonymous_ = ("field",)
@@ -486,10 +485,123 @@ class FontTool(tk.Frame):
             i.set(0)
         
 class SpriteMapRenderer:
-    def __init__(self, canvas, tilelist):
+    def __init__(self, canvas, palette, tilelist):
         self.tilelist = tilelist
         self.canvas = canvas
-
+        self.pieces = []
+        self.map = None
+        self.x = 0
+        self.y = 0
+        self.rendered = False
+        self.palette = palette
+        self.images = []
+        self.zoom = 4
+        
+    def config(self, x = None, y = None, map = None):
+        if map:
+            self.set_sprite(map)
+        elif not self.map:
+            return()
+        if x or y:
+            self.set_position(x, y)
+        else:
+            self.render()
+        
+    def set_sprite(self, map):
+        self.map = map
+        for piece in self.pieces:
+            self.canvas.delete(piece)
+        self.sprite_indices = []
+        self.pieces = []
+        for piece in self.map:
+            self.sprite_indices.append(piece)
+            #self.sprite_indices[-1].set_asLongLong(piece.asLongLong, piece.asLongLong)
+            
+    def insert(self, index, piece):
+        self.sprite_indices.insert(index, piece)
+        self.render()
+        
+    def delete(self, index):
+        del self.sprite_indices[index]
+        self.render()
+    
+    def set_position(self, x, y):
+        if not self.rendered:
+            self.render()
+        for piece in self.pieces:
+            vector_x = x - self.x
+            vector_y = y - self.y
+            cur_coords = self.canvas.coords(piece)
+            cur_x = cur_coords[0]
+            cur_y = cur_coords[1]
+            self.canvas.move(piece, vector_x, vector_y)
+        self.x, self.y = x, y
+    
+    def render(self):
+        if not self.map:
+            return()
+        for piece in self.pieces:
+            self.canvas.delete(piece)
+        self.pieces = []
+        self.images = []
+        for piece in self.sprite_indices:
+            xpos = piece.xpos
+            ypos = piece.ypos
+            if xpos > 32767:
+                xpos = xpos - 65536
+            if ypos > 127:
+                ypos = ypos - 256
+            xpos, ypos = xpos * self.zoom, ypos * self.zoom
+            self.pieces.append(self.canvas.create_image(self.x + xpos, self.y + ypos, anchor = tk.NW))
+            self.images.append(PhotoImage_Ex(data=self.build_piece_ppm(piece), format='PPM').zoom(self.zoom,self.zoom))
+            self.canvas.itemconfigure(self.pieces[-1], image = self.images[-1])
+        self.rendered = True
+        
+    def build_piece_ppm(self, piece):
+        ppm = bytearray()
+        height = piece.height + 1
+        width = piece.width + 1
+        for y in range(height):
+            address_y = y + piece.address
+            tiles = []
+            for x in range(width):
+                try:
+                    tiles.append(self.tilelist[address_y + (x * height)])
+                except IndexError:
+                    tiles.append(None)
+            for row in range(8):
+                offset_y = row * 8
+                for x in range(width):
+                    try:
+                        tile = tiles[x].int_tile
+                        for column in range(8):
+                            i = column + offset_y
+                            pixel_value = tile[i]
+                            r, g, b = self.palette.get_true_rgb_colour(piece.palette, pixel_value)
+                            ppm.append(r)
+                            ppm.append(g)
+                            ppm.append(b)
+                    except:
+                        for i in range(24):
+                            ppm.append(0)
+        
+        header = b'P6 '
+        header = header + str(width * 8).encode('ascii')
+        header = header + b' '
+        header = header + str(height * 8).encode('ascii')
+        header = header +  b' 255 '
+                            
+        ppm = header + ppm
+        return(ppm)
+        
+class SpriteViewer(tk.Canvas):
+    
+    def __init__(self, parent, tilelist, palette, *args, **options):
+        tk.Canvas.__init__(self, parent, *args, **options)
+        self.config(width = 500, height = 500, background = 'blue')
+        self.palette = palette
+        self.tilelist = tilelist
+        self.sprite = SpriteMapRenderer(self, self.palette, self.tilelist)
             
 class ScrolledFrame(tk.Frame):
     """A pure Tkinter scrollable frame that actually works!
@@ -864,8 +976,8 @@ class MapViewer(tk.Canvas):
         except IndexError:
             self.itemconfigure(self.tiles[plane % 2][offset], image = self.error_image, state='normal')
         self.itemconfigure(self.tiles[(plane % 2)^1][offset], state=['hidden', 'normal'][plane > 1])
-        priority = self.planes[0][offset].priority - self.planes[1][offset].priority
-        if priority < 0:
+        #priority = self.planes[0][offset].priority - self.planes[1][offset].priority
+        if self.planes[1][offset].priority > self.planes[0][offset].priority:
             self.tag_lower(self.tiles[0][offset])
         else:
             self.tag_raise(self.tiles[0][offset])
@@ -1011,6 +1123,7 @@ class App:
         self.menubar.add_cascade(label='File', menu=self.filemenu)
         self.frame.master.config(menu=self.menubar)
         
+        self.filemenu.add_command(label='Open sprite...', command=self.open_sprite)
         self.filemenu.add_command(label='Open palette...', command=self.open_palette)
         self.filemenu.add_command(label='Open tiles...', command=self.open_tiles)
         self.filemenu.add_command(label='Open plane A...', command=self.open_mapa)
@@ -1078,6 +1191,8 @@ class App:
         self.font_tool = FontTool(self.tile_editor_frm, self.tilelist, self.paletteline, self.tile)
         
         self.map_editor = PlaneMapEditor(self.frame, self.selected_map, self.palette, self.tilelist, self.tile, self.paletteline, self.planes, self.plane_map_width, self.plane_map_height)
+        self.sprite_editor = SpriteViewer(self.frame, self.tilelist, self.palette)
+        #self.sprite_editor.pack(side=tk.LEFT, fill = tk.BOTH)
         self.map_editor.pack(side=tk.LEFT, fill = tk.BOTH)
         self.tile_editor_frm.pack(side=tk.LEFT, fill = tk.Y)
         self.tool_selector = ttk.Combobox(self.tile_editor_frm, state = ['readonly'])
@@ -1160,6 +1275,20 @@ class App:
             
             self.font_tool.refresh()
             
+    def open_sprite(self):
+        filename = tk.filedialog.askopenfilename(title = "Open sprite", filetypes = (("BIN files","*.bin"),("all files","*.*")))
+        if filename !='':
+            pieces = []
+            with open(filename, 'rb') as binary_file:
+                data = binary_file.read()
+            for i in range(0,len(data) - 1, 6):
+                thispiece = 0
+                for j in range(6):
+                    thispiece = thispiece << 8
+                    thispiece = thispiece + data[i+j]
+                pieces.append(thispiece)
+        self.sprite_editor.sprite.config(map = decode_sonic3_sprite(pieces), x = 250, y = 250)
+            
     def open_mapa(self):
         filename = tk.filedialog.askopenfilename(title = "Open plane A", filetypes = (("BIN files","*.bin"),("all files","*.*")))
         if filename !='':
@@ -1191,7 +1320,7 @@ class App:
             self.map_editor.refresh()
         
     def open_palette(self):
-        filename = tk.filedialog.askopenfilename(title = "Open tiles",filetypes = (("BIN files","*.bin"),("all files","*.*")))
+        filename = tk.filedialog.askopenfilename(title = "Open palette",filetypes = (("BIN files","*.bin"),("all files","*.*")))
         if filename !='':
             palette = []
             with open(filename, 'rb') as binary_file:
