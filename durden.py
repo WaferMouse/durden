@@ -110,6 +110,8 @@ def decode_sonic3_sprite(sprite):
         new_piece = (i & (0xFFFF << 32)) << 8
         new_piece = new_piece | (i & 0xFFFFFFFF)
         pieces[-1].asLongLong = new_piece
+        if pieces[-1].ypos > 127:
+            pieces[-1].ypos = pieces[-1].ypos | 0xFF00
     return(pieces)
 
 class SpriteIndex( ctypes.Union ):
@@ -549,8 +551,8 @@ class SpriteMapRenderer:
             ypos = piece.ypos
             if xpos > 32767:
                 xpos = xpos - 65536
-            if ypos > 127:
-                ypos = ypos - 256
+            if ypos > 32767:
+                ypos = ypos - 65536
             xpos, ypos = xpos * self.zoom, ypos * self.zoom
             self.pieces.append(self.canvas.create_image(self.x + xpos, self.y + ypos, anchor = tk.NW))
             self.images.append(PhotoImage_Ex(data=self.build_piece_ppm(piece), format='PPM').zoom(self.zoom,self.zoom))
@@ -1123,7 +1125,7 @@ class App:
         self.menubar.add_cascade(label='File', menu=self.filemenu)
         self.frame.master.config(menu=self.menubar)
         
-        self.filemenu.add_command(label='Open sprite...', command=self.open_sprite)
+        #self.filemenu.add_command(label='Open sprite...', command=self.open_sprite)
         self.filemenu.add_command(label='Open palette...', command=self.open_palette)
         self.filemenu.add_command(label='Open tiles...', command=self.open_tiles)
         self.filemenu.add_command(label='Open plane A...', command=self.open_mapa)
