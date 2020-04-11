@@ -100,7 +100,7 @@ class SpriteFields( ctypes.LittleEndianStructure ):
         ("ypos",        c_ulonglong,16),
         ]
         
-def decode_sonic3_sprite(sprite):
+def decode_s3_sprite(sprite):
     #PCCY XAAA AAAA AAAA
     #      YY 0S VV VV XX XX
     #YY YY 0S LL VV VV XX XX
@@ -487,7 +487,7 @@ class FontTool(tk.Frame):
             i.set(0)
         
 class SpriteMapRenderer:
-    def __init__(self, canvas, palette, tilelist):
+    def __init__(self, canvas, palette, tilelist, zoom):
         self.tilelist = tilelist
         self.canvas = canvas
         self.pieces = []
@@ -497,7 +497,7 @@ class SpriteMapRenderer:
         self.rendered = False
         self.palette = palette
         self.images = []
-        self.zoom = 4
+        self.zoom = zoom
         
     def config(self, x = None, y = None, map = None):
         if map:
@@ -517,14 +517,16 @@ class SpriteMapRenderer:
         self.pieces = []
         for piece in self.map:
             self.sprite_indices.append(piece)
-            #self.sprite_indices[-1].set_asLongLong(piece.asLongLong, piece.asLongLong)
             
     def insert(self, index, piece):
         self.sprite_indices.insert(index, piece)
         self.render()
         
-    def delete(self, index):
-        del self.sprite_indices[index]
+    def delete(self, index = None):
+        if index:
+            del self.sprite_indices[index]
+        else:
+            self.sprite_indices = []
         self.render()
     
     def set_position(self, x, y):
@@ -538,6 +540,23 @@ class SpriteMapRenderer:
             cur_y = cur_coords[1]
             self.canvas.move(piece, vector_x, vector_y)
         self.x, self.y = x, y
+        
+    def move_piece(self, index, x, y):
+        piece = sel.sprite_indices[index]
+        for i in range(2):
+            #YY YY 0S LL VV VV XX XX
+            coord_value = [piece.xpos, piece.ypos][i]
+            vector = [x, y][i]
+            coord_value = (coord_value + vector) % 65536
+            if i:
+                piece.ypos = coord_value
+            else:
+                piece.xpos = coord_value
+        self.canvas.move(self.pieces[index], x, y)
+        
+    def set_piece_palette(self, index, paletteline):
+        self.sprite_indices[index].palette = paletteline
+        self.render()
     
     def render(self):
         if not self.map:
@@ -555,7 +574,7 @@ class SpriteMapRenderer:
                 ypos = ypos - 65536
             xpos, ypos = xpos * self.zoom, ypos * self.zoom
             self.pieces.append(self.canvas.create_image(self.x + xpos, self.y + ypos, anchor = tk.NW))
-            self.images.append(PhotoImage_Ex(data=self.build_piece_ppm(piece), format='PPM').zoom(self.zoom,self.zoom))
+            self.images.append(self.build_piece_ppm(piece))
             self.canvas.itemconfigure(self.pieces[-1], image = self.images[-1])
         self.rendered = True
         
@@ -563,6 +582,7 @@ class SpriteMapRenderer:
         ppm = bytearray()
         height = piece.height + 1
         width = piece.width + 1
+        mask = bytearray()
         for y in range(height):
             address_y = y + piece.address
             tiles = []
@@ -572,20 +592,26 @@ class SpriteMapRenderer:
                 except IndexError:
                     tiles.append(None)
             for row in range(8):
-                offset_y = row * 8
+                y_offset = row * 8
                 for x in range(width):
                     try:
                         tile = tiles[x].int_tile
                         for column in range(8):
-                            i = column + offset_y
+                            i = column + y_offset
                             pixel_value = tile[i]
-                            r, g, b = self.palette.get_true_rgb_colour(piece.palette, pixel_value)
+                            r, g, b = self.palette.get_true_rgb_colour(app.paletteline.get() + piece.palette, pixel_value)
                             ppm.append(r)
                             ppm.append(g)
                             ppm.append(b)
+                            if pixel_value:
+                                mask.append(1)
+                            else:
+                                mask.append(0)
                     except:
                         for i in range(24):
                             ppm.append(0)
+                        for i in range(8):
+                            mask.append(1)
         
         header = b'P6 '
         header = header + str(width * 8).encode('ascii')
@@ -594,16 +620,24 @@ class SpriteMapRenderer:
         header = header +  b' 255 '
                             
         ppm = header + ppm
-        return(ppm)
+        image = PhotoImage_Ex(data=ppm, format='PPM')
+        for y in range(height * 8):
+            big_width = width * 8
+            y_offset = y * (big_width)
+            for x in range(big_width):
+                if not mask[y_offset + x]:
+                    image.transparency_set(x,y,True)
+        image = image.zoom(self.zoom,self.zoom)
+        return(image)
         
-class SpriteViewer(tk.Canvas):
+class SpriteMapEditor(tk.Canvas):
     
     def __init__(self, parent, tilelist, palette, *args, **options):
         tk.Canvas.__init__(self, parent, *args, **options)
-        self.config(width = 500, height = 500, background = 'blue')
+        self.config(width = 500, height = 500, background = 'black')
         self.palette = palette
         self.tilelist = tilelist
-        self.sprite = SpriteMapRenderer(self, self.palette, self.tilelist)
+        self.sprite = SpriteMapRenderer(self, self.palette, self.tilelist, 4)
             
 class ScrolledFrame(tk.Frame):
     """A pure Tkinter scrollable frame that actually works!
@@ -962,9 +996,9 @@ class MapViewer(tk.Canvas):
             if plane > 1:
                 self.refresh(None, None, 1)
             for y in range(self.height_t):
-                offset_y = y * self.width_t
+                y_offset = y * self.width_t
                 for x in range(self.width_t):
-                    offset = x + offset_y
+                    offset = x + y_offset
                     self.refresh_2(offset, plane)
         else:
             offset = x + (y * self.width_t)
@@ -1116,6 +1150,8 @@ class App:
         self.plane_map_width = tk.IntVar()
         self.plane_map_width.set(40)
         
+        self.selected_frame = tk.IntVar()
+        
         self.plane_map_height = tk.IntVar()
         self.plane_map_height.set(28)
         
@@ -1125,7 +1161,7 @@ class App:
         self.menubar.add_cascade(label='File', menu=self.filemenu)
         self.frame.master.config(menu=self.menubar)
         
-        #self.filemenu.add_command(label='Open sprite...', command=self.open_sprite)
+        self.filemenu.add_command(label='Open sprite...', command=self.open_s3_sprite)
         self.filemenu.add_command(label='Open palette...', command=self.open_palette)
         self.filemenu.add_command(label='Open tiles...', command=self.open_tiles)
         self.filemenu.add_command(label='Open plane A...', command=self.open_mapa)
@@ -1152,6 +1188,9 @@ class App:
         self.tilelist = [Tile([0] * 64, self.palette),Tile([1] * 64, self.palette)]
 
         self.map = []
+        self.frames = []
+        
+        self.selected_piece = tk.IntVar()
 
         for y in range(self.plane_map_height.get()):
             for x in range(self.plane_map_width.get()):
@@ -1187,14 +1226,32 @@ class App:
         self.selected_map = tk.IntVar()
         self.selected_map.set(0)
         
-        self.tile_editor_frm = tk.Frame(self.frame)
+        self.nb = ttk.Notebook(self.frame)
+        self.map_editor_frm = tk.Frame(self.nb)
+        self.sprite_editor_frm = tk.Frame(self.nb)
+        
+        self.sprite_browser_frm = ScrolledFrame(self.sprite_editor_frm)
+        
+        self.sprite_browser = tk.Canvas(self.sprite_browser_frm.interior, background = 'black')
+        
+        for bind in ["<ButtonPress-1>", "<B1-Motion>"]:
+            self.sprite_browser.bind(bind, lambda event: self.frame_clicked(event))
+        self.sprite_browser.pack(side=tk.LEFT, fill = tk.BOTH)
+        
+        self.paletteline.trace('w',self.palettelinechanged)
+        
+        self.tile_editor_frm = tk.Frame(self.map_editor_frm)
         self.tile_editor = TileEditor(self.tile_editor_frm, self.tile, self.tilelist, self.tile, self.paletteline, self.colour)
         
         self.font_tool = FontTool(self.tile_editor_frm, self.tilelist, self.paletteline, self.tile)
         
-        self.map_editor = PlaneMapEditor(self.frame, self.selected_map, self.palette, self.tilelist, self.tile, self.paletteline, self.planes, self.plane_map_width, self.plane_map_height)
-        self.sprite_editor = SpriteViewer(self.frame, self.tilelist, self.palette)
-        #self.sprite_editor.pack(side=tk.LEFT, fill = tk.BOTH)
+        self.map_editor = PlaneMapEditor(self.map_editor_frm, self.selected_map, self.palette, self.tilelist, self.tile, self.paletteline, self.planes, self.plane_map_width, self.plane_map_height)
+        self.sprite_editor = SpriteMapEditor(self.sprite_editor_frm, self.tilelist, self.palette)
+        self.nb.add(self.map_editor_frm, text = "Planemap Editor")
+        self.nb.add(self.sprite_editor_frm, text = "Sprite Editor")
+        self.nb.pack(side=tk.LEFT, fill = tk.BOTH)
+        self.sprite_editor.pack(side=tk.LEFT, fill = tk.BOTH)
+        self.sprite_browser_frm.pack(side=tk.LEFT, fill = tk.BOTH)
         self.map_editor.pack(side=tk.LEFT, fill = tk.BOTH)
         self.tile_editor_frm.pack(side=tk.LEFT, fill = tk.Y)
         self.tool_selector = ttk.Combobox(self.tile_editor_frm, state = ['readonly'])
@@ -1223,6 +1280,15 @@ class App:
         self.master.bind('<<PutPixel>>', lambda event: self.put_pixel())
         self.master.bind('<<LastPixel>>', lambda event: self.last_pixel())
         self.master.bind('<<TilesChanged>>', lambda event: self.tiles_changed())
+        
+    def frame_clicked(self, event):
+        x, y = event2canvas(event, self.sprite_browser)
+        y = int(y) >> 6
+        
+        self.selected_frame.set(y)
+        
+        self.sprite_editor.sprite.config(map = self.frame_indices[y])
+        
         
     def select_tool(self, event=''):
         tool = self.tool_selector.current()
@@ -1277,19 +1343,46 @@ class App:
             
             self.font_tool.refresh()
             
-    def open_sprite(self):
+    def open_s3_sprite(self):
         filename = tk.filedialog.askopenfilename(title = "Open sprite", filetypes = (("BIN files","*.bin"),("all files","*.*")))
         if filename !='':
-            pieces = []
+            #pieces = []
             with open(filename, 'rb') as binary_file:
                 data = binary_file.read()
-            for i in range(0,len(data) - 1, 6):
-                thispiece = 0
-                for j in range(6):
-                    thispiece = thispiece << 8
-                    thispiece = thispiece + data[i+j]
-                pieces.append(thispiece)
-        self.sprite_editor.sprite.config(map = decode_sonic3_sprite(pieces), x = 250, y = 250)
+            i = 0
+            frames = []
+            while i < len(data):
+                piece_count = (data[i] << 8) + data[i + 1]
+                pieces = []
+                i = i + 2
+                for piece in range(piece_count):
+                    thispiece = 0
+                    for j in range(6):
+                        thispiece = thispiece << 8
+                        thispiece = thispiece + data[i+j]
+                    i = i + 6
+                    pieces.append(thispiece)
+                frames.append(decode_s3_sprite(pieces))
+            self.sprite_browser.config(height = len(frames) * 64)
+            for frame in self.frames:
+                frame.delete()
+            self.frames = []
+            i = 0
+            for frame in frames:
+                self.frames.append(SpriteMapRenderer(self.sprite_browser, self.palette, self.tilelist, 1))
+                self.frames[-1].config(map = frame, x = 32, y = (64 * i) + 32)
+                i = i + 1
+                
+            self.frame_indices = frames
+
+            #for i in range(0,len(data) - 1, 6):
+            #    thispiece = 0
+            #    for j in range(6):
+            #        thispiece = thispiece << 8
+            #        thispiece = thispiece + data[i+j]
+            #    pieces.append(thispiece)
+        self.selected_frame.set(0)
+        self.sprite_editor.sprite.config(map = frames[0], x = 250, y = 250)
             
     def open_mapa(self):
         filename = tk.filedialog.askopenfilename(title = "Open plane A", filetypes = (("BIN files","*.bin"),("all files","*.*")))
@@ -1398,6 +1491,10 @@ class App:
         self.map_editor.refresh()
         self.tile_browser.refresh()
         self.font_tool.refresh()
+        
+    def palettelinechanged(self, *args):
+        for frame in self.frames:
+            frame.render()
 
 root = tk.Tk()
 
