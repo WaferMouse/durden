@@ -22,7 +22,7 @@ NIBBLE_SIZE = BYTE_SIZE >> 1
 
 test_1 = False
         
-PALETTE_TILE_SIZE = 32
+PALETTE_TILE_SIZE = 24
 
 char_list = [' ']
 
@@ -634,10 +634,10 @@ class SpriteMapEditor(tk.Canvas):
     
     def __init__(self, parent, tilelist, palette, *args, **options):
         tk.Canvas.__init__(self, parent, *args, **options)
-        self.config(width = 500, height = 500, background = 'black')
+        self.config(width = 40*8, height = 28*8, background = 'black')
         self.palette = palette
         self.tilelist = tilelist
-        self.sprite = SpriteMapRenderer(self, self.palette, self.tilelist, 4)
+        self.sprite = SpriteMapRenderer(self, self.palette, self.tilelist, 2)
             
 class ScrolledFrame(tk.Frame):
     """A pure Tkinter scrollable frame that actually works!
@@ -1232,11 +1232,21 @@ class App:
         
         self.sprite_browser_frm = ScrolledFrame(self.sprite_editor_frm)
         
-        self.sprite_browser = tk.Canvas(self.sprite_browser_frm.interior, background = 'black')
+        self.sprite_browser = tk.Canvas(self.sprite_browser_frm.interior, background = 'black', width = 64)
+        
+        self.piece_browser_frm = ScrolledFrame(self.sprite_editor_frm)
+        
+        self.piece_browser = tk.Canvas(self.piece_browser_frm.interior, background = 'grey', width = 288)
+        self.piece_browser.pack(side=tk.LEFT, fill = tk.BOTH)
         
         for bind in ["<ButtonPress-1>", "<B1-Motion>"]:
             self.sprite_browser.bind(bind, lambda event: self.frame_clicked(event))
-        self.sprite_browser.pack(side=tk.LEFT, fill = tk.BOTH)
+        self.sprite_browser.pack(side=tk.LEFT, fill = tk.Y)
+        
+        self.sprite_tool = tk.IntVar()
+        
+        self.sprite_select_rad = tk.Radiobutton(self.sprite_editor_frm, variable = self.sprite_tool, value = 0, text = "Select", indicatoron = 0)
+        self.sprite_pixel_rad = tk.Radiobutton(self.sprite_editor_frm, variable = self.sprite_tool, value = 1, text = "Draw", indicatoron = 0)
         
         self.paletteline.trace('w',self.palettelinechanged)
         
@@ -1251,7 +1261,12 @@ class App:
         self.nb.add(self.sprite_editor_frm, text = "Sprite Editor")
         self.nb.pack(side=tk.LEFT, fill = tk.BOTH)
         self.sprite_editor.pack(side=tk.LEFT, fill = tk.BOTH)
+        self.piece_browser_frm.pack(side=tk.LEFT, fill = tk.BOTH)
         self.sprite_browser_frm.pack(side=tk.LEFT, fill = tk.BOTH)
+        
+        tk.Label(self.sprite_editor_frm, text = "Tool:").pack(side=tk.LEFT, anchor = "n")
+        self.sprite_select_rad.pack(side=tk.LEFT, anchor = "n")
+        self.sprite_pixel_rad.pack(side=tk.LEFT, anchor = "n")
         self.map_editor.pack(side=tk.LEFT, fill = tk.BOTH)
         self.tile_editor_frm.pack(side=tk.LEFT, fill = tk.Y)
         self.tool_selector = ttk.Combobox(self.tile_editor_frm, state = ['readonly'])
@@ -1262,6 +1277,8 @@ class App:
         self.tile_editor.pack(fill = tk.Y, expand = 1)
         self.tile_browser = TileBrowser(self.frame, self.tilelist, self.tile, self.paletteline)
         self.tile_browser.pack(fill = tk.BOTH, expand = 1)
+        
+        self.pieces = []
         
         
         self.button = tk.Button(
@@ -1288,6 +1305,8 @@ class App:
         self.selected_frame.set(y)
         
         self.sprite_editor.sprite.config(map = self.frame_indices[y])
+        
+        self.render_pieces()
         
         
     def select_tool(self, event=''):
@@ -1382,7 +1401,27 @@ class App:
             #        thispiece = thispiece + data[i+j]
             #    pieces.append(thispiece)
         self.selected_frame.set(0)
-        self.sprite_editor.sprite.config(map = frames[0], x = 250, y = 250)
+        self.sprite_editor.sprite.config(map = frames[0], x = 8*32, y = 8*32)
+        self.render_pieces()
+        
+    def render_pieces(self):
+        y = 0 #width = 288
+        for i in self.pieces:
+            i.delete()
+        for i in self.frame_indices[self.selected_frame.get()]:
+            if i.width > i.height:
+                max = i.width
+            else:
+                max = i.height
+            zoom = [36,18,12,9][max]
+            height = (zoom * (i.height + 1) * 8) + 72
+            self.pieces.append(SpriteMapRenderer(self.piece_browser, self.palette, self.tilelist, zoom))
+            map = copy.deepcopy(i)
+            map.xpos = 0
+            map.ypos = 0
+            self.pieces[-1].config(x = 0, y = y, map = [map])
+            y = y + height
+        self.piece_browser.config(height = y - 72)
             
     def open_mapa(self):
         filename = tk.filedialog.askopenfilename(title = "Open plane A", filetypes = (("BIN files","*.bin"),("all files","*.*")))
