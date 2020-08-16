@@ -1401,7 +1401,7 @@ class App:
             #        thispiece = thispiece + data[i+j]
             #    pieces.append(thispiece)
         self.selected_frame.set(0)
-        self.sprite_editor.sprite.config(map = frames[0], x = 8*32, y = 8*32)
+        self.sprite_editor.sprite.config(map = frames[0], x = 4*32, y = 4*32)
         self.render_pieces()
         
     def render_pieces(self):
@@ -1414,12 +1414,13 @@ class App:
             else:
                 max = i.height
             zoom = [36,18,12,9][max]
+            x = (3 - i.width) * 36
             height = (zoom * (i.height + 1) * 8) + 72
             self.pieces.append(SpriteMapRenderer(self.piece_browser, self.palette, self.tilelist, zoom))
             map = copy.deepcopy(i)
             map.xpos = 0
             map.ypos = 0
-            self.pieces[-1].config(x = 0, y = y, map = [map])
+            self.pieces[-1].config(x = x, y = y, map = [map])
             y = y + height
         self.piece_browser.config(height = y - 72)
             
